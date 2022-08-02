@@ -1,16 +1,28 @@
 use axum::{routing::get, extract::Extension, Router};
 use std::net::SocketAddr;
-use std::sync::Arc;
 
-use crate::repository::{DynRepository, SqliteRepository};
+use crate::repository::{account::SqliteAccountRepository, AsyncPool};
+
+#[macro_use]
+extern crate diesel;
+
+#[macro_use]
+extern crate diesel_migrations;
 
 mod controller;
 mod model;
 mod repository;
+mod schema;
+
+diesel_migrations::embed_migrations!();
 
 #[tokio::main]
 async fn main() {
-    let repo = Arc::new(SqliteRepository) as DynRepository;
+    let pool = AsyncPool::new("");
+
+    embedded_migrations::run(&pool.get_conn().await.unwrap()).expect("unable to run migrations");
+
+    let repo = SqliteAccountRepository::new(pool);
 
     let app = Router::new()
         .route("/", get(controller::status))

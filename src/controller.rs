@@ -1,7 +1,7 @@
 use axum::{response::{Html, IntoResponse, Response}, http::StatusCode, extract::{Path, Extension}, Json};
 
 use crate::model::Account;
-use crate::repository::{RepoError, DynRepository};
+use crate::repository::{RepoError, account::DynAccountRepository};
 
 #[derive(Debug)]
 pub enum AppError {
@@ -10,7 +10,7 @@ pub enum AppError {
 
 impl IntoResponse for AppError {
   fn into_response(self) -> Response {
-    (StatusCode::INTERNAL_SERVER_ERROR, "resource not found").into_response()
+    (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response()
   }
 }
 
@@ -24,7 +24,7 @@ pub async fn status() -> Html<&'static str> {
   Html("{}")
 }
 
-pub async fn get_account(Path(addr): Path<String>, Extension(repo): Extension<DynRepository>) -> Result<Json<Account>, AppError> {
+pub async fn get_account(Path(addr): Path<String>, Extension(repo): Extension<DynAccountRepository>) -> Result<Json<Account>, AppError> {
   let account = repo.get_account(&addr).await?;
 
   Ok(account.into())
@@ -37,6 +37,7 @@ mod tests {
   use async_trait::async_trait;
   use std::sync::Arc;
   use super::*;
+  use crate::repository::AccountRepository;
 
   mock! {
     pub Repository {  
@@ -45,7 +46,7 @@ mod tests {
   }
 
   #[async_trait]
-  impl crate::repository::Repository for MockRepository {
+  impl AccountRepository for MockRepository {
     async fn get_account(&self, addr: &str) -> Result<Account, RepoError> {
       self.get_account(addr)
     }
