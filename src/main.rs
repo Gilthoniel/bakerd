@@ -1,4 +1,4 @@
-use axum::{routing::get, extract::Extension, Router};
+use axum::{extract::Extension, routing::get, Router};
 use std::net::SocketAddr;
 
 use crate::repository::{account::SqliteAccountRepository, AsyncPool};
@@ -36,5 +36,3 @@ async fn main() {
         .await
         .unwrap();
 }
-
-

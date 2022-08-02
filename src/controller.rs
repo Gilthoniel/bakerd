@@ -1,71 +1,82 @@
-use axum::{response::{Html, IntoResponse, Response}, http::StatusCode, extract::{Path, Extension}, Json};
+use axum::{
+    extract::{Extension, Path},
+    http::StatusCode,
+    response::{Html, IntoResponse, Response},
+    Json,
+};
 
 use crate::model::Account;
-use crate::repository::{RepoError, account::DynAccountRepository};
+use crate::repository::{account::DynAccountRepository, RepoError};
 
 #[derive(Debug)]
 pub enum AppError {
-  RepoError(RepoError),
+    RepoError(RepoError),
 }
 
 impl IntoResponse for AppError {
-  fn into_response(self) -> Response {
-    (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response()
-  }
+    fn into_response(self) -> Response {
+        (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response()
+    }
 }
 
 impl From<RepoError> for AppError {
-  fn from(e: RepoError) -> Self {
-    Self::RepoError(e)
-  }
+    fn from(e: RepoError) -> Self {
+        Self::RepoError(e)
+    }
 }
 
+/// Controller to return the status of the application.
 pub async fn status() -> Html<&'static str> {
-  Html("{}")
+    Html("{}")
 }
 
-pub async fn get_account(Path(addr): Path<String>, Extension(repo): Extension<DynAccountRepository>) -> Result<Json<Account>, AppError> {
-  let account = repo.get_account(&addr).await?;
+/// Controller to return the account associated with the address.
+pub async fn get_account(
+    Path(addr): Path<String>,
+    Extension(repo): Extension<DynAccountRepository>,
+) -> Result<Json<Account>, AppError> {
+    let account = repo.get_account(&addr).await?;
 
-  Ok(account.into())
+    Ok(account.into())
 }
 
 #[cfg(test)]
 mod tests {
-  use mockall::*;
-  use mockall::predicate::*;
-  use async_trait::async_trait;
-  use std::sync::Arc;
-  use super::*;
-  use crate::repository::AccountRepository;
+    use super::*;
+    use crate::repository::AccountRepository;
+    use async_trait::async_trait;
+    use mockall::predicate::*;
+    use mockall::*;
+    use std::sync::Arc;
 
-  mock! {
-    pub Repository {  
-      fn get_account(&self, addr: &str) -> Result<Account, RepoError>;
+    mock! {
+      pub Repository {
+        fn get_account(&self, addr: &str) -> Result<Account, RepoError>;
+      }
     }
-  }
 
-  #[async_trait]
-  impl AccountRepository for MockRepository {
-    async fn get_account(&self, addr: &str) -> Result<Account, RepoError> {
-      self.get_account(addr)
+    #[async_trait]
+    impl AccountRepository for MockRepository {
+        async fn get_account(&self, addr: &str) -> Result<Account, RepoError> {
+            self.get_account(addr)
+        }
     }
-  }
-  
-  #[tokio::test]
-  async fn test_get_account() {
-    let mut repository = MockRepository::default();
 
-    let addr = "some-address";
+    #[tokio::test]
+    async fn test_get_account() {
+        let mut repository = MockRepository::default();
 
-    repository
-      .expect_get_account()
-      .with(eq(addr))
-      .times(1)
-      .returning(|_| Ok(Account::new(addr)));
+        let addr = "some-address";
 
-    let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await.unwrap();
-    assert_eq!(Account::new(addr), res.0)
-  }
+        repository
+            .expect_get_account()
+            .with(eq(addr))
+            .times(1)
+            .returning(|_| Ok(Account::new(addr)));
 
+        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository)))
+            .await
+            .unwrap();
+        assert_eq!(Account::new(addr), res.0)
+    }
 }
