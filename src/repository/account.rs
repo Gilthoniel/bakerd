@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use std::sync::Arc;
 
-use super::{AccountRepository, AsyncPool, RepoError};
+use super::{AccountRepository, AsyncPool, StorageError};
 use crate::model::Account;
 use crate::schema::accounts::dsl::*;
 
@@ -33,7 +33,7 @@ impl SqliteAccountRepository {
 #[async_trait]
 impl AccountRepository for SqliteAccountRepository {
     /// It returns the account with the given address if it exists.
-    async fn get_account(&self, addr: &str) -> Result<Account, RepoError> {
+    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
         let addr = addr.to_string();
 
         let record: AccountRecord = self

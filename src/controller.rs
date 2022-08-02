@@ -1,27 +1,29 @@
 use axum::{
     extract::{Extension, Path},
-    http::StatusCode,
     response::{Html, IntoResponse, Response},
     Json,
 };
 
 use crate::model::Account;
-use crate::repository::{account::DynAccountRepository, RepoError};
+use crate::repository::{account::DynAccountRepository, StorageError};
 
 #[derive(Debug)]
 pub enum AppError {
-    RepoError(RepoError),
+    Storage(StorageError),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response()
+        match self {
+            Self::Storage(e) => e.status_code(),
+        }
+        .into_response()
     }
 }
 
-impl From<RepoError> for AppError {
-    fn from(e: RepoError) -> Self {
-        Self::RepoError(e)
+impl From<StorageError> for AppError {
+    fn from(e: StorageError) -> Self {
+        Self::Storage(e)
     }
 }
 
@@ -51,13 +53,13 @@ mod tests {
 
     mock! {
       pub Repository {
-        fn get_account(&self, addr: &str) -> Result<Account, RepoError>;
+        fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
       }
     }
 
     #[async_trait]
     impl AccountRepository for MockRepository {
-        async fn get_account(&self, addr: &str) -> Result<Account, RepoError> {
+        async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
             self.get_account(addr)
         }
     }

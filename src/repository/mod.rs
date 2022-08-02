@@ -5,6 +5,7 @@ use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::RunMigrationsError;
+use axum::http::StatusCode;
 use std::path::Path;
 
 use crate::model::Account;
@@ -14,25 +15,39 @@ diesel_migrations::embed_migrations!();
 type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 
 #[derive(Debug)]
-pub enum RepoError {
+pub enum StorageError {
     Pool(r2d2::Error),
     Driver(DriverError),
     Migration(RunMigrationsError),
 }
 
-impl From<r2d2::Error> for RepoError {
+impl StorageError {
+    /// It returns a tuple of the HTTP code associated with the storage error as
+    /// well as a human-readable message.
+    pub fn status_code(&self) -> (StatusCode, &'static str) {
+        match self {
+            Self::Driver(e) => match e {
+                DriverError::NotFound => (StatusCode::NOT_FOUND, "resource does not exist"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
+            },
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
+        }
+    }
+}
+
+impl From<r2d2::Error> for StorageError {
     fn from(e: r2d2::Error) -> Self {
         Self::Pool(e)
     }
 }
 
-impl From<DriverError> for RepoError {
+impl From<DriverError> for StorageError {
     fn from(e: DriverError) -> Self {
         Self::Driver(e)
     }
 }
 
-impl From<RunMigrationsError> for RepoError {
+impl From<RunMigrationsError> for StorageError {
     fn from(e: RunMigrationsError) -> Self {
         Self::Migration(e)
     }
@@ -58,7 +73,7 @@ impl AsyncPool {
 
     /// Provide the migrations within the application so that it can be called
     /// on startup (or for tests).
-    pub async fn run_migrations(&self) -> Result<(), RepoError> {
+    pub async fn run_migrations(&self) -> Result<(), StorageError> {
         let conn = self.get_conn().await?;
 
         embedded_migrations::run(&conn)?;
@@ -66,24 +81,24 @@ impl AsyncPool {
         Ok(())
     }
 
-    pub async fn get_conn(&self) -> Result<Connection, RepoError> {
-        tokio::task::block_in_place(|| self.pool.get().map_err(RepoError::from))
+    pub async fn get_conn(&self) -> Result<Connection, StorageError> {
+        tokio::task::block_in_place(|| self.pool.get().map_err(StorageError::from))
     }
 
-    pub async fn exec<F, T>(&self, stmt: F) -> Result<T, RepoError>
+    pub async fn exec<F, T>(&self, stmt: F) -> Result<T, StorageError>
     where
         F: FnOnce(Connection) -> QueryResult<T> + Send + 'static,
         T: Send + 'static,
     {
         tokio::task::block_in_place(|| {
-            let conn = self.pool.get().map_err(RepoError::from)?;
+            let conn = self.pool.get().map_err(StorageError::from)?;
 
-            stmt(conn).map_err(RepoError::from)
+            stmt(conn).map_err(StorageError::from)
         })
     }
 }
 
 #[async_trait]
 pub trait AccountRepository {
-    async fn get_account(&self, addr: &str) -> Result<Account, RepoError>;
+    async fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
 }
