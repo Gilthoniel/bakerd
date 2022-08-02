@@ -44,3 +44,26 @@ impl AccountRepository for SqliteAccountRepository {
         Ok(Account::from(record))
     }
 }
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use crate::repository::AsyncPool;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_get_account() {
+        let pool = AsyncPool::new(":memory:");
+        pool.run_migrations().await.unwrap();
+
+        // Create an account for the test.
+        pool
+            .exec(|conn| diesel::insert_into(accounts).values(address.eq("some-address")).execute(&conn))
+            .await
+            .unwrap();
+
+        let repo = SqliteAccountRepository::new(pool);
+
+        let res = repo.get_account("some-address").await.unwrap();
+        assert_eq!(Account::new("some-address"), res);
+    }
+}

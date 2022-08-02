@@ -4,9 +4,12 @@ use async_trait::async_trait;
 use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
+use diesel_migrations::RunMigrationsError;
 use std::path::Path;
 
 use crate::model::Account;
+
+diesel_migrations::embed_migrations!();
 
 type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 
@@ -14,6 +17,7 @@ type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 pub enum RepoError {
     Pool(r2d2::Error),
     Driver(DriverError),
+    Migration(RunMigrationsError),
 }
 
 impl From<r2d2::Error> for RepoError {
@@ -28,13 +32,19 @@ impl From<DriverError> for RepoError {
     }
 }
 
+impl From<RunMigrationsError> for RepoError {
+    fn from(e: RunMigrationsError) -> Self {
+        Self::Migration(e)
+    }
+}
+
 pub struct AsyncPool {
     pool: r2d2::Pool<ConnectionManager<SqliteConnection>>,
 }
 
 impl AsyncPool {
-    pub fn new(dir: &str) -> Self {
-        let p = Path::new(dir).join("data.db");
+    pub fn new(path: &str) -> Self {
+        let p = Path::new(path);
 
         let manager = ConnectionManager::new(p.to_str().expect("invalid data path"));
 
@@ -44,6 +54,16 @@ impl AsyncPool {
             .expect("failed to initiate the pool");
 
         Self { pool }
+    }
+
+    /// Provide the migrations within the application so that it can be called
+    /// on startup (or for tests).
+    pub async fn run_migrations(&self) -> Result<(), RepoError> {
+        let conn = self.get_conn().await?;
+
+        embedded_migrations::run(&conn)?;
+
+        Ok(())
     }
 
     pub async fn get_conn(&self) -> Result<Connection, RepoError> {

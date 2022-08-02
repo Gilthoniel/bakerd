@@ -13,9 +13,9 @@ ON blocks (height);
 CREATE TABLE accounts (
   id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   address TEXT NOT NULL UNIQUE,
-  available_amount TEXT NOT NULL,
-  staked_amount TEXT NOT NULL,
-  lottery_power DECIMAL NOT NULL
+  available_amount TEXT NOT NULL DEFAULT '0',
+  staked_amount TEXT NOT NULL DEFAULT '0',
+  lottery_power DECIMAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE account_rewards (

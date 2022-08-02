@@ -14,13 +14,11 @@ mod model;
 mod repository;
 mod schema;
 
-diesel_migrations::embed_migrations!();
-
 #[tokio::main]
 async fn main() {
-    let pool = AsyncPool::new("");
+    let pool = AsyncPool::new("data.db");
 
-    embedded_migrations::run(&pool.get_conn().await.unwrap()).expect("unable to run migrations");
+    pool.run_migrations().await.unwrap();
 
     let repo = SqliteAccountRepository::new(pool);
 
