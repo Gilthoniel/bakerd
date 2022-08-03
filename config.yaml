@@ -1,0 +1,11 @@
+secret: XSBHYzlJcjx0fFVFSXh4ZzFKIS0=
+pairs:
+  - "CCD:USD"
+  - "CCD:BTC"
+accounts:
+  - "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p"
+jobs:
+  refresh-accounts: "*/30 * * * * *"
+  price-refresher: "*/30 * * * * *"
+  health-checker: "*/10 * * * * *"
+  block-fetcher: "*/10 * * * * *"

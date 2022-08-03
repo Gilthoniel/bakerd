@@ -1,6 +1,7 @@
 use axum::{extract::Extension, routing::get, Router};
 use env_logger::Env;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use tokio::signal;
 
 use crate::repository::{account::SqliteAccountRepository, AsyncPool};
@@ -19,10 +20,13 @@ mod job;
 mod model;
 mod repository;
 mod schema;
+mod config;
 
 #[tokio::main]
 async fn main() {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
+
+    let cfg = parse_config("./config.yaml");
 
     let pool = AsyncPool::new("data.db");
 
@@ -31,7 +35,18 @@ async fn main() {
     let repo = SqliteAccountRepository::new(pool);
 
     // Schedule the jobs
-    let scheduler = job::Scheduler::new();
+    let mut scheduler = job::Scheduler::new();
+
+    for (name, schedule_str) in cfg.get_jobs() {
+        let schedule = cron::Schedule::from_str(schedule_str).unwrap();
+
+        let job = match name.as_str() {
+            "refresh-accounts" => Box::new(job::account::RefreshAccountsJob::new()),
+            _ => panic!("job [{}] is unknown", name),
+        };
+        
+        scheduler.register(name, schedule, job);
+    }
 
     let jobber = scheduler.start();
 
@@ -61,3 +76,9 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
     }
 }
+
+fn parse_config(filepath: &str) -> config::Config {
+    let file = std::fs::File::open(filepath).expect("unable to open config file");
+  
+    serde_yaml::from_reader(file).expect("failed to deserialize the config")
+  }

@@ -1,3 +1,5 @@
+pub mod account;
+
 use cron::Schedule;
 use log::{error, info, warn};
 use std::collections::HashMap;
@@ -38,7 +40,7 @@ impl Scheduler {
     /// It registers a job given a name and a schedule.
     pub fn register(
         &mut self,
-        name: &'static str,
+        name: &str,
         schedule: Schedule,
         job: Box<dyn AsyncJob>,
     ) {
