@@ -1,11 +1,10 @@
 pub mod account;
 
-use async_trait::async_trait;
+use axum::http::StatusCode;
 use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::RunMigrationsError;
-use axum::http::StatusCode;
 use std::path::Path;
 
 use crate::model::Account;

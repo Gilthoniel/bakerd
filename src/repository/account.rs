@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use diesel::prelude::*;
 use std::sync::Arc;
 
@@ -56,10 +55,13 @@ mod integration_tests {
         pool.run_migrations().await.unwrap();
 
         // Create an account for the test.
-        pool
-            .exec(|conn| diesel::insert_into(accounts).values(address.eq("some-address")).execute(&conn))
-            .await
-            .unwrap();
+        pool.exec(|conn| {
+            diesel::insert_into(accounts)
+                .values(address.eq("some-address"))
+                .execute(&conn)
+        })
+        .await
+        .unwrap();
 
         let repo = SqliteAccountRepository::new(pool);
 
