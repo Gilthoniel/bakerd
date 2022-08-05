@@ -3,8 +3,8 @@ use serde::Deserialize;
 use tonic::codegen::InterceptedService;
 use tonic::metadata::Ascii;
 use tonic::service::Interceptor;
-use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
 use tonic::transport::Uri;
+use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
 
 use ccd::p2p_client::P2pClient;
 
@@ -14,13 +14,13 @@ pub mod ccd {
 
 #[derive(Debug)]
 pub enum Error {
-    Status(tonic::Status),
+    Network(tonic::Status),
     Json(serde_json::Error),
 }
 
 impl From<tonic::Status> for Error {
     fn from(e: tonic::Status) -> Self {
-        Self::Status(e)
+        Self::Network(e)
     }
 }
 
@@ -61,9 +61,7 @@ impl Client {
 
         let client = P2pClient::with_interceptor(channel, Authorization::new());
 
-        Client {
-            client,
-        }
+        Client { client }
     }
 
     /// Return the details of the account like its balance and the staked amount.
@@ -92,8 +90,7 @@ struct Authorization {
 
 impl Authorization {
     fn new() -> Self {
-        let token = MetadataValue::try_from("rpcadmin")
-            .expect("authorization token is malformed");
+        let token = MetadataValue::try_from("rpcadmin").expect("authorization token is malformed");
 
         Authorization { token }
     }
@@ -111,34 +108,27 @@ impl Interceptor for Authorization {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    use mockall::predicate::*;
     use tonic::{Request, Response, Status};
 
-    struct Service;
-
-    #[tonic::async_trait]
-    impl ccd::p2p_server::P2p for Service {
-        async fn get_account_info(
-            &self,
-            _: Request<ccd::GetAddressInfoRequest>,
-        ) -> Result<Response<ccd::JsonResponse>, Status> {
-            let value = r#"{
-                "accountNonce": 1,
-                "accountAmount": "256",
-                "accountIndex": 2,
-                "accountAddress": "address",
-                "accountBaker": {
-                    "stakedAmount": "12.123",
-                    "restakeEarnings": true,
-                    "bakerId": 42
-                }
-            }"#.to_string();
-
-            Ok(Response::new(ccd::JsonResponse { value }))
+    mockall::mock! {
+        pub Service {
+            fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> Result<Response<ccd::JsonResponse>, Status>;
         }
     }
 
-    async fn init() -> std::io::Result<u16> {
-        let svc = ccd::p2p_server::P2pServer::new(Service);
+    #[tonic::async_trait]
+    impl ccd::p2p_server::P2p for MockService {
+        async fn get_account_info(
+            &self,
+            request: Request<ccd::GetAddressInfoRequest>,
+        ) -> Result<Response<ccd::JsonResponse>, Status> {
+            self.get_account_info(request)
+        }
+    }
+
+    async fn init(srvc: MockService) -> std::io::Result<u16> {
+        let svc = ccd::p2p_server::P2pServer::new(srvc);
 
         let socket = tokio::net::TcpSocket::new_v6()?;
         socket.bind("[::1]:0".parse().unwrap())?;
@@ -160,11 +150,66 @@ mod integration_tests {
 
     #[tokio::test]
     async fn test_get_account_info() {
-        let port = init().await.unwrap();
+        let mut service = MockService::default();
+
+        service
+            .expect_get_account_info()
+            .withf(|arg| arg.get_ref().block_hash == "hash" && arg.get_ref().address == "addr")
+            .times(1)
+            .returning(move |_| {
+                Ok(Response::new(ccd::JsonResponse {
+                    value: r#"{
+                    "accountNonce": 1,
+                    "accountAmount": "256",
+                    "accountIndex": 2,
+                    "accountAddress": "address",
+                    "accountBaker": {
+                        "stakedAmount": "12.123",
+                        "restakeEarnings": true,
+                        "bakerId": 42
+                    }
+                }"#
+                    .to_string(),
+                }))
+            });
+
+        let port = init(service).await.expect("unable to start mock server");
 
         let mut client = Client::new(format!("http://[::1]:{}", port).parse::<Uri>().unwrap());
 
         let res = client.get_account_info("hash", "addr").await.unwrap();
+
         assert_eq!(1, res.account_nonce);
+    }
+
+    #[tokio::test]
+    async fn test_get_account_info_no_network() {
+        let mut client = Client::new(Uri::from_static("http://[::1]:8888"));
+
+        let res = client.get_account_info("hash", "addr").await;
+
+        assert!(matches!(res, Err(Error::Network(_))));
+    }
+
+    #[tokio::test]
+    async fn test_get_account_info_bad_json() {
+        let mut service = MockService::default();
+
+        service
+            .expect_get_account_info()
+            .times(1)
+            .returning(move |_| {
+                Ok(Response::new(ccd::JsonResponse {
+                    value: "null".to_string(),
+                }))
+            });
+
+        let port = init(service).await.expect("unable to start mock server");
+
+        let mut client = Client::new(format!("http://[::1]:{}", port).parse::<Uri>().unwrap());
+
+        let res = client.get_account_info("hash", "addr").await;
+
+        assert!(matches!(res, Err(Error::Json(_))));
     }
 }

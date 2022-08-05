@@ -8,7 +8,7 @@ pub struct RefreshAccountsJob {
 
 impl RefreshAccountsJob {
     pub fn new() -> Self {
-        Self{
+        Self {
             client: NodeClient::new(Uri::from_static("http://127.0.0.1:10000")),
         }
     }

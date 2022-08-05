@@ -1,13 +1,13 @@
 use axum::{
-    http::StatusCode,
     extract::{Extension, Path},
+    http::StatusCode,
     response::{Html, IntoResponse, Response},
     Json,
 };
 
+use crate::client::NodeError;
 use crate::model::Account;
 use crate::repository::{account::DynAccountRepository, StorageError};
-use crate::client::NodeError;
 
 #[derive(Debug)]
 pub enum AppError {
@@ -58,10 +58,10 @@ mod tests {
     use crate::repository::AccountRepository;
     use async_trait::async_trait;
     use mockall::predicate::*;
-    use mockall::*;
+    use diesel::result::Error as DriverError;
     use std::sync::Arc;
 
-    mock! {
+    mockall::mock! {
       pub Repository {
         fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
       }
@@ -89,6 +89,25 @@ mod tests {
         let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository)))
             .await
             .unwrap();
+
         assert_eq!(Account::new(addr), res.0)
+    }
+
+    #[tokio::test]
+    async fn test_get_account_not_found() {
+        let mut repository = MockRepository::default();
+
+        let addr = "some-address";
+
+        repository
+            .expect_get_account()
+            .with(eq(addr))
+            .times(1)
+            .returning(|_| Err(StorageError::Driver(DriverError::NotFound)));
+
+        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository)))
+            .await;
+
+        assert!(matches!(res, Err(AppError::Storage(_))))
     }
 }
