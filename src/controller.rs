@@ -57,8 +57,8 @@ mod tests {
     use super::*;
     use crate::repository::AccountRepository;
     use async_trait::async_trait;
-    use mockall::predicate::*;
     use diesel::result::Error as DriverError;
+    use mockall::predicate::*;
     use std::sync::Arc;
 
     mockall::mock! {
@@ -105,8 +105,7 @@ mod tests {
             .times(1)
             .returning(|_| Err(StorageError::Driver(DriverError::NotFound)));
 
-        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository)))
-            .await;
+        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await;
 
         assert!(matches!(res, Err(AppError::Storage(_))))
     }

@@ -1,3 +1,4 @@
+listen_address: 127.0.0.1:8080
 secret: XSBHYzlJcjx0fFVFSXh4ZzFKIS0=
 pairs:
   - "CCD:USD"
@@ -5,4 +6,4 @@ pairs:
 accounts:
   - "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p"
 jobs:
-  refresh-accounts: "*/2 * * * * *"
+  accounts_refresher: "*/30 * * * * *"
