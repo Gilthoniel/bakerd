@@ -5,7 +5,4 @@ pairs:
 accounts:
   - "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p"
 jobs:
-  refresh-accounts: "*/30 * * * * *"
-  price-refresher: "*/30 * * * * *"
-  health-checker: "*/10 * * * * *"
-  block-fetcher: "*/10 * * * * *"
+  refresh-accounts: "*/2 * * * * *"

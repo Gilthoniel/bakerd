@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+
+package concordium;
+
+message Empty {}
+
+message NodeInfoResponse {
+  google.protobuf.StringValue node_id = 1;
+  uint64 current_localtime = 2 [jstype = JS_STRING];
+  string peer_type = 3;
+  bool consensus_baker_running = 4;
+  bool consensus_running = 5;
+  string consensus_type = 6;
+  enum IsInBakingCommittee {
+    NOT_IN_COMMITTEE = 0;
+    ADDED_BUT_NOT_ACTIVE_IN_COMMITTEE = 1;
+    ADDED_BUT_WRONG_KEYS = 2;
+    ACTIVE_IN_COMMITTEE = 3;
+  }
+  IsInBakingCommittee consensus_baker_committee = 7;
+  bool consensus_finalizer_committee = 8;
+  google.protobuf.UInt64Value consensus_baker_id = 9;
+}
+
+message NumberResponse {
+  uint64 value = 1 [jstype = JS_STRING];
+}
+
+message PeerStatsResponse {
+  message PeerStats {
+    string node_id = 1;
+    uint64 packets_sent = 2 [jstype = JS_STRING];
+    uint64 packets_received = 3 [jstype = JS_STRING];
+    uint64 latency = 4 [jstype = JS_STRING];
+  }
+  repeated PeerStats peerstats = 1;
+  uint64 avg_bps_in = 2 [jstype = JS_STRING];
+  uint64 avg_bps_out = 3 [jstype = JS_STRING];
+}
+
+message PeersRequest {
+  bool include_bootstrappers = 1;
+}
+
+message GetAddressInfoRequest {
+  string block_hash = 1;
+  string address = 2;
+}
+
+message JsonResponse {
+  string value = 1;
+}
+
+message BlockHash {
+  string block_hash = 1;
+}
+
+message BlockHeight {
+  uint64 block_height = 1 [jstype = JS_STRING];
+  //! The block height is relative to the genesis block at this index.
+  uint32 from_genesis_index = 2;
+  //! If true, only return results from the specified genesis index.
+  bool restrict_to_genesis_index = 3;
+}
+
+service P2P {
+  rpc GetAccountInfo(GetAddressInfoRequest) returns (JsonResponse) {}
+}

@@ -1,4 +1,5 @@
 use axum::{
+    http::StatusCode,
     extract::{Extension, Path},
     response::{Html, IntoResponse, Response},
     Json,
@@ -6,16 +7,19 @@ use axum::{
 
 use crate::model::Account;
 use crate::repository::{account::DynAccountRepository, StorageError};
+use crate::client::NodeError;
 
 #[derive(Debug)]
 pub enum AppError {
     Storage(StorageError),
+    Node(NodeError),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
             Self::Storage(e) => e.status_code(),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "node error"),
         }
         .into_response()
     }
@@ -24,6 +28,12 @@ impl IntoResponse for AppError {
 impl From<StorageError> for AppError {
     fn from(e: StorageError) -> Self {
         Self::Storage(e)
+    }
+}
+
+impl From<NodeError> for AppError {
+    fn from(e: NodeError) -> Self {
+        Self::Node(e)
     }
 }
 

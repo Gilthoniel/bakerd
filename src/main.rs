@@ -15,12 +15,13 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate async_trait;
 
+mod client;
+mod config;
 mod controller;
 mod job;
 mod model;
 mod repository;
 mod schema;
-mod config;
 
 #[tokio::main]
 async fn main() {
@@ -44,7 +45,7 @@ async fn main() {
             "refresh-accounts" => Box::new(job::account::RefreshAccountsJob::new()),
             _ => panic!("job [{}] is unknown", name),
         };
-        
+
         scheduler.register(name, schedule, job);
     }
 
@@ -79,6 +80,6 @@ async fn shutdown_signal() {
 
 fn parse_config(filepath: &str) -> config::Config {
     let file = std::fs::File::open(filepath).expect("unable to open config file");
-  
+
     serde_yaml::from_reader(file).expect("failed to deserialize the config")
-  }
+}

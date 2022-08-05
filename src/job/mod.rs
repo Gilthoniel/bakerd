@@ -38,12 +38,7 @@ impl Scheduler {
     }
 
     /// It registers a job given a name and a schedule.
-    pub fn register(
-        &mut self,
-        name: &str,
-        schedule: Schedule,
-        job: Box<dyn AsyncJob>,
-    ) {
+    pub fn register(&mut self, name: &str, schedule: Schedule, job: Box<dyn AsyncJob>) {
         self.jobs.insert(name.to_string(), (schedule, job));
     }
 
@@ -68,7 +63,10 @@ impl Scheduler {
         let handle = tokio::spawn(async move {
             let mut closing = closing;
 
-            closing.changed().await.expect("unexpected error when closing");
+            closing
+                .changed()
+                .await
+                .expect("unexpected error when closing");
 
             let timeout = tokio::time::sleep(SCHEDULER_TIMEOUT);
 
@@ -149,8 +147,8 @@ impl Jobber {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use tokio::sync::watch;
     use std::str::FromStr;
+    use tokio::sync::watch;
 
     pub struct DummyJob {
         done: watch::Sender<bool>,
@@ -173,7 +171,7 @@ mod integration_tests {
 
         let schedule = cron::Schedule::from_str("* * * * * *").unwrap();
 
-        scheduler.register("dummy", schedule, Box::new(DummyJob{done}));
+        scheduler.register("dummy", schedule, Box::new(DummyJob { done }));
 
         let jobber = scheduler.start();
 
