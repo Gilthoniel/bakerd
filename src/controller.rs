@@ -5,14 +5,14 @@ use axum::{
     Json,
 };
 
-use crate::client::NodeError;
+use crate::client::Error as ClientError;
 use crate::model::Account;
 use crate::repository::{account::DynAccountRepository, StorageError};
 
 #[derive(Debug)]
 pub enum AppError {
     Storage(StorageError),
-    Node(NodeError),
+    Client(ClientError),
 }
 
 impl IntoResponse for AppError {
@@ -31,9 +31,9 @@ impl From<StorageError> for AppError {
     }
 }
 
-impl From<NodeError> for AppError {
-    fn from(e: NodeError) -> Self {
-        Self::Node(e)
+impl From<ClientError> for AppError {
+    fn from(e: ClientError) -> Self {
+        Self::Client(e)
     }
 }
 

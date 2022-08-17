@@ -7,3 +7,4 @@ accounts:
   - "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p"
 jobs:
   accounts_refresher: "*/30 * * * * *"
+  price_refresher: "*/5 * * * * *"

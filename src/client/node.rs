@@ -8,26 +8,10 @@ use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
 
 use ccd::p2p_client::P2pClient;
 
+use super::Result;
+
 pub mod ccd {
     tonic::include_proto!("concordium");
-}
-
-#[derive(Debug)]
-pub enum Error {
-    Network(tonic::Status),
-    Json(serde_json::Error),
-}
-
-impl From<tonic::Status> for Error {
-    fn from(e: tonic::Status) -> Self {
-        Self::Network(e)
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(e: serde_json::Error) -> Self {
-        Self::Json(e)
-    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -69,7 +53,7 @@ impl Client {
         &mut self,
         block_hash: &str,
         address: &str,
-    ) -> Result<AccountInfo, Error> {
+    ) -> Result<AccountInfo> {
         let request = Request::new(ccd::GetAddressInfoRequest {
             block_hash: String::from(block_hash),
             address: String::from(address),
@@ -108,12 +92,13 @@ impl Interceptor for Authorization {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    use crate::client::Error;
     use mockall::predicate::*;
     use tonic::{Request, Response, Status};
 
     mockall::mock! {
         pub Service {
-            fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> Result<Response<ccd::JsonResponse>, Status>;
+            fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> std::result::Result<Response<ccd::JsonResponse>, Status>;
         }
     }
 
@@ -122,7 +107,7 @@ mod integration_tests {
         async fn get_account_info(
             &self,
             request: Request<ccd::GetAddressInfoRequest>,
-        ) -> Result<Response<ccd::JsonResponse>, Status> {
+        ) -> std::result::Result<Response<ccd::JsonResponse>, Status> {
             self.get_account_info(request)
         }
     }
@@ -188,7 +173,7 @@ mod integration_tests {
 
         let res = client.get_account_info("hash", "addr").await;
 
-        assert!(matches!(res, Err(Error::Network(_))));
+        assert!(matches!(res, Err(Error::Grpc(_))));
     }
 
     #[tokio::test]

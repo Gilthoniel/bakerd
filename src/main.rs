@@ -37,6 +37,7 @@ async fn main() -> std::io::Result<()> {
         tokio::signal::ctrl_c().await.unwrap();
     };
 
+    // when testing the main function, we stop the server right away.
     #[cfg(test)]
     let termination = async {};
 
@@ -48,6 +49,8 @@ async fn main() -> std::io::Result<()> {
 async fn prepare_jobs(jobs: &HashMap<config::Job, String>) -> Jobber {
     let mut scheduler = job::Scheduler::new();
 
+    let price_client = client::bitfinex::BitfinexClient::default();
+
     for (name, schedule_str) in jobs {
         let schedule = cron::Schedule::from_str(schedule_str).unwrap();
 
@@ -56,6 +59,9 @@ async fn prepare_jobs(jobs: &HashMap<config::Job, String>) -> Jobber {
             schedule,
             match name {
                 config::Job::AccountsRefresher => Box::new(job::account::RefreshAccountsJob::new()),
+                config::Job::PriceRefresher => {
+                    Box::new(job::price::PriceRefresher::new(price_client.clone()))
+                }
             },
         );
     }
@@ -63,6 +69,7 @@ async fn prepare_jobs(jobs: &HashMap<config::Job, String>) -> Jobber {
     scheduler.start()
 }
 
+/// It creates an application and registers the different routes.
 async fn create_app(pool: AsyncPool) -> Router {
     // Always run the migration to make sure the application is ready to use the
     // storage.
@@ -76,6 +83,8 @@ async fn create_app(pool: AsyncPool) -> Router {
         .layer(Extension(repo))
 }
 
+/// It schedules the different jobs from the configuration and start the server.
+/// The binding address is defined by the configuration.
 async fn run_server(cfg: Config, termination: impl std::future::Future<Output = ()>) {
     let jobber = prepare_jobs(cfg.get_jobs()).await;
 
@@ -98,8 +107,8 @@ mod integration_tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use std::env;
+    use tower::ServiceExt;
 
     /// It makes sure that the main function is running properly.
     #[test]

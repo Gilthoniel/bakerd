@@ -1,4 +1,5 @@
 pub mod account;
+pub mod price;
 
 use cron::Schedule;
 use log::{error, info, warn};

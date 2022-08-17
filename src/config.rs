@@ -7,12 +7,14 @@ use std::net::SocketAddr;
 #[serde(rename_all = "snake_case")]
 pub enum Job {
     AccountsRefresher,
+    PriceRefresher,
 }
 
 impl Job {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::AccountsRefresher => "accounts-refresher",
+            Self::PriceRefresher => "price-refresher",
         }
     }
 }
