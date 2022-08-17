@@ -5,12 +5,12 @@ use axum::http::StatusCode;
 use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
-use diesel_migrations::RunMigrationsError;
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::path::Path;
 
 use crate::model::{Account, Pair, Price};
 
-diesel_migrations::embed_migrations!();
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 
@@ -18,7 +18,7 @@ type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 pub enum StorageError {
     Pool(r2d2::Error),
     Driver(DriverError),
-    Migration(RunMigrationsError),
+    Migration(Box<dyn std::error::Error>),
 }
 
 impl StorageError {
@@ -26,10 +26,9 @@ impl StorageError {
     /// well as a human-readable message.
     pub fn status_code(&self) -> (StatusCode, &'static str) {
         match self {
-            Self::Driver(e) => match e {
-                DriverError::NotFound => (StatusCode::NOT_FOUND, "resource does not exist"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
-            },
+            Self::Driver(e) if matches!(e, DriverError::NotFound) => {
+                (StatusCode::NOT_FOUND, "resource does not exist")
+            }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
         }
     }
@@ -44,12 +43,6 @@ impl From<r2d2::Error> for StorageError {
 impl From<DriverError> for StorageError {
     fn from(e: DriverError) -> Self {
         Self::Driver(e)
-    }
-}
-
-impl From<RunMigrationsError> for StorageError {
-    fn from(e: RunMigrationsError) -> Self {
-        Self::Migration(e)
     }
 }
 
@@ -75,9 +68,10 @@ impl AsyncPool {
     /// Provide the migrations within the application so that it can be called
     /// on startup (or for tests).
     pub async fn run_migrations(&self) -> Result<(), StorageError> {
-        let conn = self.get_conn().await?;
+        let mut conn = self.get_conn().await?;
 
-        embedded_migrations::run(&conn)?;
+        conn.run_pending_migrations(MIGRATIONS)
+            .map_err(|e| StorageError::Migration(e))?;
 
         Ok(())
     }
@@ -102,6 +96,10 @@ impl AsyncPool {
 #[async_trait]
 pub trait AccountRepository {
     async fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
+
+    /// It creates or updates an existing account using the address as the
+    /// identifier.
+    async fn set_account(&self, account: &Account) -> Result<(), StorageError>;
 }
 
 /// A repository to set and get prices of pairs.

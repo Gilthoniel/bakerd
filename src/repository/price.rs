@@ -37,7 +37,7 @@ impl PriceRepository for SqlitePriceRepository {
 
         let record: PriceRecord = self
             .pool
-            .exec(|conn| prices.filter(filter).first(&conn))
+            .exec(|mut conn| prices.filter(filter).first(&mut conn))
             .await?;
 
         Ok(Price::from(record))
@@ -52,7 +52,7 @@ impl PriceRepository for SqlitePriceRepository {
         );
 
         self.pool
-            .exec(|conn| replace_into(prices).values(values).execute(&conn))
+            .exec(|mut conn| replace_into(prices).values(values).execute(&mut conn))
             .await?;
 
         Ok(())

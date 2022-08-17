@@ -76,37 +76,28 @@ pub async fn get_price(
 mod tests {
     use super::*;
     use crate::model::Pair;
+    use crate::repository::account::MockAccountRepository;
     use crate::repository::price::MockPriceRepository;
-    use crate::repository::AccountRepository;
     use axum::http::StatusCode;
     use diesel::result::Error as DriverError;
     use mockall::predicate::*;
-    use tonic::Status;
     use std::sync::Arc;
-
-    mockall::mock! {
-      pub AccountRepository {
-        fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
-      }
-    }
-
-    #[async_trait]
-    impl AccountRepository for MockAccountRepository {
-        async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
-            self.get_account(addr)
-        }
-    }
+    use tonic::Status;
 
     #[test]
     fn test_app_errors() {
         assert_eq!(
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::from(ClientError::Grpc(Status::already_exists("fake"))).into_response().status(),
+            AppError::from(ClientError::Grpc(Status::already_exists("fake")))
+                .into_response()
+                .status(),
         );
 
         assert_eq!(
             StatusCode::NOT_FOUND,
-            AppError::from(StorageError::Driver(DriverError::NotFound)).into_response().status(),
+            AppError::from(StorageError::Driver(DriverError::NotFound))
+                .into_response()
+                .status(),
         );
     }
 

@@ -7,14 +7,35 @@ use crate::schema::accounts::dsl::*;
 
 pub type DynAccountRepository = Arc<dyn AccountRepository + Send + Sync>;
 
-/// Record of an account state on the blockchain.
-#[derive(Queryable)]
-pub struct AccountRecord {
-    pub id: i32,
-    pub address: String,
-    pub available_amount: String,
-    pub staked_amount: String,
-    pub lottery_power: f64,
+mod records {
+    use crate::model;
+    use crate::schema::accounts;
+
+    /// Record of an account state on the blockchain.
+    #[derive(Queryable)]
+    pub struct Account {
+        pub id: i32,
+        pub address: String,
+        pub available_amount: String,
+        pub staked_amount: String,
+        pub lottery_power: f64,
+    }
+
+    impl From<Account> for model::Account {
+        /// It creates an account from a record of the storage layer.
+        fn from(record: Account) -> Self {
+            Self::new(&record.address)
+        }
+    }
+
+    #[derive(Insertable, AsChangeset)]
+    #[diesel(table_name = accounts)]
+    pub struct NewAccount {
+        pub address: String,
+        pub available_amount: String,
+        pub staked_amount: String,
+        pub lottery_power: f64,
+    }
 }
 
 /// Provide storage API to read and write accounts.
@@ -31,16 +52,59 @@ impl SqliteAccountRepository {
 
 #[async_trait]
 impl AccountRepository for SqliteAccountRepository {
+    async fn set_account(&self, account: &Account) -> Result<(), StorageError> {
+        let record = records::NewAccount {
+            address: account.get_address().into(),
+            available_amount: "0".into(),
+            staked_amount: "0".into(),
+            lottery_power: 0.0,
+        };
+
+        self.pool
+            .exec(move |mut conn| {
+                diesel::insert_into(accounts)
+                    .values(&record)
+                    .on_conflict(address)
+                    .do_update()
+                    .set(&record)
+                    .execute(&mut conn)
+            })
+            .await?;
+
+        Ok(())
+    }
+
     /// It returns the account with the given address if it exists.
     async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
         let addr = addr.to_string();
 
-        let record: AccountRecord = self
+        let record: records::Account = self
             .pool
-            .exec(|conn| accounts.filter(address.eq(addr)).first(&conn))
+            .exec(|mut conn| accounts.filter(address.eq(addr)).first(&mut conn))
             .await?;
 
         Ok(Account::from(record))
+    }
+}
+
+#[cfg(test)]
+mockall::mock! {
+  pub AccountRepository {
+      pub fn set_account(&self, account: &Account) -> Result<(), StorageError>;
+
+      pub fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
+  }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl AccountRepository for MockAccountRepository {
+    async fn set_account(&self, account: &Account) -> Result<(), StorageError> {
+        self.set_account(account)
+    }
+
+    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
+        self.get_account(addr)
     }
 }
 
@@ -54,18 +118,15 @@ mod integration_tests {
         let pool = AsyncPool::new(":memory:");
         pool.run_migrations().await.unwrap();
 
-        // Create an account for the test.
-        pool.exec(|conn| {
-            diesel::insert_into(accounts)
-                .values(address.eq("some-address"))
-                .execute(&conn)
-        })
-        .await
-        .unwrap();
+        let account = Account::new("some-address");
 
         let repo = SqliteAccountRepository::new(pool);
 
-        let res = repo.get_account("some-address").await.unwrap();
-        assert_eq!(Account::new("some-address"), res);
+        // 1. Create an account.
+        assert!(matches!(repo.set_account(&account).await, Ok(_)),);
+
+        // 2. Get the account.
+        let res = repo.get_account(account.get_address()).await.unwrap();
+        assert_eq!(account, res);
     }
 }

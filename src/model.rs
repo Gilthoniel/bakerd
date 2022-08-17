@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::repository::account::AccountRecord;
 use crate::repository::price::PriceRecord;
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -14,11 +13,9 @@ impl Account {
             address: addr.to_string(),
         }
     }
-}
 
-impl From<AccountRecord> for Account {
-    fn from(record: AccountRecord) -> Self {
-        Account::new(&record.address)
+    pub fn get_address(&self) -> &str {
+        &self.address
     }
 }
 
