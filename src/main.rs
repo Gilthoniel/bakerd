@@ -30,7 +30,7 @@ mod schema;
 
 struct Context {
     account_repository: repository::account::DynAccountRepository,
-    price_repository: PriceRepository,
+    price_repository: repository::price::DynPriceRepository,
 }
 
 impl Context {
@@ -110,7 +110,9 @@ async fn create_app(ctx: &Context) -> Router {
     Router::new()
         .route("/", get(controller::status))
         .route("/accounts/:addr", get(controller::get_account))
+        .route("/prices/:pair", get(controller::get_price))
         .layer(Extension(ctx.account_repository.clone()))
+        .layer(Extension(ctx.price_repository.clone()))
 }
 
 /// It schedules the different jobs from the configuration and start the server.

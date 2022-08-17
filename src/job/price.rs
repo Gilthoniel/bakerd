@@ -1,27 +1,24 @@
 use super::{AppError, AsyncJob};
 use crate::client::PriceClient;
 use crate::model::Pair;
-use crate::repository::PriceRepository;
+use crate::repository::price::DynPriceRepository;
 
 type Client = Box<dyn PriceClient + Sync + Send>;
 
-type Repository = Box<dyn PriceRepository + Sync + Send>;
-
 pub struct PriceRefresher {
     client: Client,
-    repository: Repository,
+    repository: DynPriceRepository,
     pairs: Vec<Pair>,
 }
 
 impl PriceRefresher {
-    pub fn new<C, R>(client: C, repository: R) -> Self
+    pub fn new<C>(client: C, repository: DynPriceRepository) -> Self
     where
         C: PriceClient + Send + Sync + 'static,
-        R: PriceRepository + Send + Sync + 'static,
     {
         Self {
             client: Box::new(client),
-            repository: Box::new(repository),
+            repository: repository,
             pairs: vec![],
         }
     }
@@ -50,9 +47,10 @@ mod tests {
     use super::*;
     use mockall::mock;
     use mockall::predicate::*;
+    use std::sync::Arc;
 
     use crate::model::{Pair, Price};
-    use crate::repository::StorageError;
+    use crate::repository::price::MockPriceRepository;
 
     mock! {
         pub Client {
@@ -67,44 +65,27 @@ mod tests {
         }
     }
 
-    mock! {
-        pub Repository {
-            fn get_price(&self, pair: &Pair) -> Result<Price, StorageError>;
-
-            fn set_price(&self, price: &Price) -> Result<(), StorageError>;
-        }
-    }
-
-    #[async_trait]
-    impl PriceRepository for MockRepository {
-        async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError> {
-            self.get_price(pair)
-        }
-
-        async fn set_price(&self, price: &Price) -> Result<(), StorageError> {
-            self.set_price(price)
-        }
-    }
-
     #[tokio::test]
     async fn test_execute() {
         let mut mock_client = MockClient::new();
 
         let pair: Pair = ("CCD", "USD").into();
 
-        mock_client.expect_get_prices()
+        mock_client
+            .expect_get_prices()
             .with(eq(vec![pair.clone()]))
             .times(1)
             .returning(|_| Ok(vec![Price::new(("CCD", "USD").into(), 2.0, 0.5)]));
 
-        let mut mock_repository = MockRepository::new();
+        let mut mock_repository = MockPriceRepository::new();
 
-        mock_repository.expect_set_price()
+        mock_repository
+            .expect_set_price()
             .with(eq(Price::new(("CCD", "USD").into(), 2.0, 0.5)))
             .times(1)
             .returning(|_| Ok(()));
 
-        let mut job = PriceRefresher::new(mock_client, mock_repository);
+        let mut job = PriceRefresher::new(mock_client, Arc::new(mock_repository));
         job.follow_pair(pair.clone());
 
         let res = job.execute().await;

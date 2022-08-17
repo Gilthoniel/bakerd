@@ -22,7 +22,7 @@ impl From<AccountRecord> for Account {
     }
 }
 
-#[derive(PartialEq, Clone, Deserialize, Debug)]
+#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub struct Pair(String, String);
 
 impl From<(&str, &str)> for Pair {
@@ -41,7 +41,7 @@ impl Pair {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Serialize, Debug)]
 pub struct Price {
     pair: Pair,
     bid: f64,

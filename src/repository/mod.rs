@@ -8,7 +8,7 @@ use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::RunMigrationsError;
 use std::path::Path;
 
-use crate::model::{Account, Price, Pair};
+use crate::model::{Account, Pair, Price};
 
 diesel_migrations::embed_migrations!();
 

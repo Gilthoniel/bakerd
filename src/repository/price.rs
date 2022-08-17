@@ -1,10 +1,13 @@
 use diesel::prelude::*;
 use diesel::replace_into;
+use std::sync::Arc;
 
 use super::{AsyncPool, PriceRepository, StorageError};
 
-use crate::model::{Price, Pair};
+use crate::model::{Pair, Price};
 use crate::schema::prices::dsl::*;
+
+pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
 
 /// Record of an account state on the blockchain.
 #[derive(Queryable)]
@@ -22,8 +25,8 @@ pub struct SqlitePriceRepository {
 }
 
 impl SqlitePriceRepository {
-    pub fn new(pool: AsyncPool) -> Self {
-        Self { pool }
+    pub fn new(pool: AsyncPool) -> DynPriceRepository {
+        Arc::new(Self { pool })
     }
 }
 
@@ -32,7 +35,8 @@ impl PriceRepository for SqlitePriceRepository {
     async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError> {
         let filter = base.eq(pair.base().to_string());
 
-        let record: PriceRecord = self.pool
+        let record: PriceRecord = self
+            .pool
             .exec(|conn| prices.filter(filter).first(&conn))
             .await?;
 
@@ -52,6 +56,27 @@ impl PriceRepository for SqlitePriceRepository {
             .await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mockall::mock! {
+    pub PriceRepository {
+        pub fn get_price(&self, pair: &Pair) -> Result<Price, StorageError>;
+
+        pub fn set_price(&self, price: &Price) -> Result<(), StorageError>;
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl PriceRepository for MockPriceRepository {
+    async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError> {
+        self.get_price(pair)
+    }
+
+    async fn set_price(&self, price: &Price) -> Result<(), StorageError> {
+        self.set_price(price)
     }
 }
 
