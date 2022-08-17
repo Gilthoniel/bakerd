@@ -1,6 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::repository::account::AccountRecord;
+use crate::repository::price::PriceRecord;
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Account {
@@ -21,7 +22,7 @@ impl From<AccountRecord> for Account {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Clone, Deserialize, Debug)]
 pub struct Pair(String, String);
 
 impl From<(&str, &str)> for Pair {
@@ -40,7 +41,7 @@ impl Pair {
     }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Price {
     pair: Pair,
     bid: f64,
@@ -62,5 +63,15 @@ impl Price {
 
     pub fn ask(&self) -> f64 {
         self.ask
+    }
+}
+
+impl From<PriceRecord> for Price {
+    fn from(record: PriceRecord) -> Self {
+        Self {
+            pair: Pair(record.base, record.quote),
+            bid: record.bid,
+            ask: record.ask,
+        }
     }
 }

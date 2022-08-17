@@ -30,9 +30,9 @@ impl From<serde_json::Error> for Error {
     }
 }
 
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[async_trait]
 pub trait PriceClient {
-    async fn get_prices(&self, pairs: Vec<Pair>) -> Result<Vec<Price>>;
+    async fn get_prices(&self, pairs: &Vec<Pair>) -> Result<Vec<Price>>;
 }

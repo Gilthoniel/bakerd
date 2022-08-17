@@ -1,12 +1,15 @@
 use axum::{extract::Extension, routing::get, Router};
 use env_logger::Env;
-use std::collections::HashMap;
 use std::fs::File;
 use std::str::FromStr;
 
 use crate::config::Config;
 use crate::job::Jobber;
-use crate::repository::{account::SqliteAccountRepository, AsyncPool};
+use crate::repository::{
+    account::SqliteAccountRepository as AccountRepository,
+    price::SqlitePriceRepository as PriceRepository, AsyncPool,
+};
+use controller::AppError;
 
 #[macro_use]
 extern crate diesel;
@@ -25,6 +28,20 @@ mod model;
 mod repository;
 mod schema;
 
+struct Context {
+    account_repository: repository::account::DynAccountRepository,
+    price_repository: PriceRepository,
+}
+
+impl Context {
+    fn new(pool: &AsyncPool) -> Self {
+        Self {
+            account_repository: AccountRepository::new(pool.clone()),
+            price_repository: PriceRepository::new(pool.clone()),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
@@ -41,17 +58,17 @@ async fn main() -> std::io::Result<()> {
     #[cfg(test)]
     let termination = async {};
 
-    run_server(cfg, termination).await;
+    run_server(&cfg, termination).await.unwrap();
 
     Ok(())
 }
 
-async fn prepare_jobs(jobs: &HashMap<config::Job, String>) -> Jobber {
+async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
     let mut scheduler = job::Scheduler::new();
 
     let price_client = client::bitfinex::BitfinexClient::default();
 
-    for (name, schedule_str) in jobs {
+    for (name, schedule_str) in cfg.get_jobs() {
         let schedule = cron::Schedule::from_str(schedule_str).unwrap();
 
         scheduler.register(
@@ -60,7 +77,16 @@ async fn prepare_jobs(jobs: &HashMap<config::Job, String>) -> Jobber {
             match name {
                 config::Job::AccountsRefresher => Box::new(job::account::RefreshAccountsJob::new()),
                 config::Job::PriceRefresher => {
-                    Box::new(job::price::PriceRefresher::new(price_client.clone()))
+                    let mut job = job::price::PriceRefresher::new(
+                        price_client.clone(),
+                        ctx.price_repository.clone(),
+                    );
+
+                    for pair in cfg.get_pairs() {
+                        job.follow_pair(pair.clone());
+                    }
+
+                    Box::new(job)
                 }
             },
         );
@@ -69,35 +95,44 @@ async fn prepare_jobs(jobs: &HashMap<config::Job, String>) -> Jobber {
     scheduler.start()
 }
 
-/// It creates an application and registers the different routes.
-async fn create_app(pool: AsyncPool) -> Router {
+async fn prepare_context() -> Result<Context, AppError> {
+    let pool = AsyncPool::new("data.db");
+
     // Always run the migration to make sure the application is ready to use the
     // storage.
-    pool.run_migrations().await.unwrap();
+    pool.run_migrations().await?;
 
-    let repo = SqliteAccountRepository::new(pool);
+    Ok(Context::new(&pool))
+}
 
+/// It creates an application and registers the different routes.
+async fn create_app(ctx: &Context) -> Router {
     Router::new()
         .route("/", get(controller::status))
         .route("/accounts/:addr", get(controller::get_account))
-        .layer(Extension(repo))
+        .layer(Extension(ctx.account_repository.clone()))
 }
 
 /// It schedules the different jobs from the configuration and start the server.
 /// The binding address is defined by the configuration.
-async fn run_server(cfg: Config, termination: impl std::future::Future<Output = ()>) {
-    let jobber = prepare_jobs(cfg.get_jobs()).await;
+async fn run_server(
+    cfg: &Config,
+    termination: impl std::future::Future<Output = ()>,
+) -> Result<(), AppError> {
+    let ctx = prepare_context().await?;
 
-    let pool = AsyncPool::new("data.db");
+    let jobber = prepare_jobs(cfg, &ctx).await;
 
     axum::Server::bind(cfg.get_listen_addr())
-        .serve(create_app(pool).await.into_make_service())
+        .serve(create_app(&ctx).await.into_make_service())
         .with_graceful_shutdown(termination)
         .await
         .unwrap();
 
     // Shutdown the job controller.
     jobber.shutdown().await;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -122,13 +157,20 @@ mod integration_tests {
     /// It makes sure that known job can be scheduled without error.
     #[tokio::test]
     async fn test_prepare_jobs() {
-        let mut jobs = HashMap::new();
-        jobs.insert(
-            config::Job::AccountsRefresher,
-            "* * * * * * 1970".to_string(),
+        let values = concat!(
+            "listen_address: 127.0.0.1:8080\n",
+            "jobs:\n",
+            "  accounts_refresher: \"* * * * * * 1970\"\n",
+            "  price_refresher: \"* * * * * * 1970\"\n",
+            "pairs:\n",
+            "  - [\"BTC\", \"USD\"]\n"
         );
 
-        let jobber = prepare_jobs(&jobs).await;
+        let mut values = values.as_bytes();
+
+        let cfg = Config::from_reader(&mut values).unwrap();
+
+        let jobber = prepare_jobs(&cfg, &Context::new(&AsyncPool::new(":memory:"))).await;
 
         jobber.shutdown().await;
     }
@@ -138,14 +180,14 @@ mod integration_tests {
     async fn test_run_server() {
         let cfg = Config::default();
 
-        run_server(cfg, async {}).await;
+        run_server(&cfg, async {}).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_account() {
-        let pool = AsyncPool::new(":memory:");
+        let ctx = prepare_context().await.unwrap();
 
-        let app = create_app(pool).await;
+        let app = create_app(&ctx).await;
 
         let response = app
             .oneshot(

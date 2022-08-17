@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 
+use crate::model::Pair;
+
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Job {
@@ -23,6 +25,7 @@ impl Job {
 pub struct Config {
     listen_address: SocketAddr,
     jobs: HashMap<Job, String>,
+    pairs: Vec<Pair>,
 }
 
 impl Config {
@@ -38,6 +41,10 @@ impl Config {
     pub fn get_jobs(&self) -> &HashMap<Job, String> {
         &self.jobs
     }
+
+    pub fn get_pairs(&self) -> &Vec<Pair> {
+        &self.pairs
+    }
 }
 
 impl Default for Config {
@@ -45,6 +52,7 @@ impl Default for Config {
         Self {
             listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
             jobs: HashMap::new(),
+            pairs: vec![],
         }
     }
 }

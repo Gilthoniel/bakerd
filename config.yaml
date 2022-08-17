@@ -1,8 +1,8 @@
 listen_address: 127.0.0.1:8080
 secret: XSBHYzlJcjx0fFVFSXh4ZzFKIS0=
 pairs:
-  - "CCD:USD"
-  - "CCD:BTC"
+  - ["BTC", "USD"]
+  - ["CCD", "USD"]
 accounts:
   - "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p"
 jobs:

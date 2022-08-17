@@ -61,7 +61,7 @@ impl<E: Executor> BitfinexClient<E> {
 
 #[async_trait]
 impl<E: Executor> PriceClient for BitfinexClient<E> {
-    async fn get_prices(&self, pairs: Vec<Pair>) -> Result<Vec<Price>> {
+    async fn get_prices(&self, pairs: &Vec<Pair>) -> Result<Vec<Price>> {
         // Build the symbols that can be understood by Bitfinex.
         let symbols = pairs
             .iter()
@@ -81,7 +81,7 @@ impl<E: Executor> PriceClient for BitfinexClient<E> {
         let prices = pairs
             .into_iter()
             .zip(res.iter())
-            .map(|(pair, ticker)| Price::new(pair, ticker.1, ticker.3))
+            .map(|(pair, ticker)| Price::new(pair.clone(), ticker.1, ticker.3))
             .collect();
 
         Ok(prices)
@@ -132,7 +132,10 @@ mod tests {
         let client = BitfinexClient::new(mock);
 
         let prices = client
-            .get_prices(vec![Pair::from(("BTC", "USD")), Pair::from(("CCD", "USD"))])
+            .get_prices(&vec![
+                Pair::from(("BTC", "USD")),
+                Pair::from(("CCD", "USD")),
+            ])
             .await
             .expect("tickers request failed");
 
@@ -158,7 +161,7 @@ mod integration_tests {
     async fn test_get_prices() {
         let client = BitfinexClient::default();
 
-        let res = client.get_prices(vec![Pair::from(("BTC", "USD"))]).await;
+        let res = client.get_prices(&vec![Pair::from(("BTC", "USD"))]).await;
 
         assert!(matches!(res, Ok(_)));
     }
@@ -172,7 +175,7 @@ mod integration_tests {
                 .unwrap(),
         });
 
-        let res = client.get_prices(vec![Pair::from(("BTC", "USD"))]).await;
+        let res = client.get_prices(&vec![Pair::from(("BTC", "USD"))]).await;
 
         assert!(matches!(res, Err(Error::Http(_))));
     }

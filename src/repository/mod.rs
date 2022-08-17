@@ -1,4 +1,5 @@
 pub mod account;
+pub mod price;
 
 use axum::http::StatusCode;
 use diesel::r2d2::ConnectionManager;
@@ -7,7 +8,7 @@ use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::RunMigrationsError;
 use std::path::Path;
 
-use crate::model::Account;
+use crate::model::{Account, Price, Pair};
 
 diesel_migrations::embed_migrations!();
 
@@ -52,6 +53,7 @@ impl From<RunMigrationsError> for StorageError {
     }
 }
 
+#[derive(Clone)]
 pub struct AsyncPool {
     pool: r2d2::Pool<ConnectionManager<SqliteConnection>>,
 }
@@ -100,4 +102,14 @@ impl AsyncPool {
 #[async_trait]
 pub trait AccountRepository {
     async fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
+}
+
+/// A repository to set and get prices of pairs.
+#[async_trait]
+pub trait PriceRepository {
+    /// It takes a pair and return the price if found in the storage.
+    async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError>;
+
+    /// It takes a price and insert or update the price in the storage.
+    async fn set_price(&self, price: &Price) -> Result<(), StorageError>;
 }
