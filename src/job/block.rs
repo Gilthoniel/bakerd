@@ -3,18 +3,31 @@ use crate::client::DynNodeClient;
 use crate::repository::block::NewBlock;
 use crate::repository::DynBlockRepository;
 use log::{info, warn};
+use std::collections::HashSet;
 
 pub struct BlockFetcher {
     client: DynNodeClient,
     repository: DynBlockRepository,
+    accounts: HashSet<String>,
 }
 
 impl BlockFetcher {
     pub fn new(client: DynNodeClient, repository: DynBlockRepository) -> Self {
-        Self { client, repository }
+        Self {
+            client,
+            repository,
+            accounts: HashSet::new(),
+        }
+    }
+
+    pub fn follow_account(&mut self, address: &str) {
+        self.accounts.insert(address.into());
     }
 
     async fn do_block(&self, block_hash: &str) -> Result<(), AppError> {
+        // Insert the account rewards before processing the block.
+        self.do_rewards(block_hash).await?;
+
         let info = self.client.get_block_info(block_hash).await?;
 
         let new_block = NewBlock {
@@ -33,6 +46,23 @@ impl BlockFetcher {
 
         Ok(())
     }
+
+    async fn do_rewards(&self, block_hash: &str) -> Result<(), AppError> {
+        let summary = self.client.get_block_summary(block_hash).await?;
+
+        for event in summary.special_events {
+            if event.tag != "PaydayAccountReward" {
+                continue;
+            }
+
+            if matches!(&event.account, Some(addr) if self.accounts.contains(addr)) {
+                // TODO: insert reward.
+                info!("found reward for account `{}`", event.account.unwrap())
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -45,6 +75,7 @@ impl AsyncJob for BlockFetcher {
         let current_block = self.repository.get_last_block().await?;
 
         let mut height = current_block.get_height() + 1;
+        //let mut height = 3697547;
 
         while height <= last_block.height {
             match self.client.get_block_at_height(height).await? {

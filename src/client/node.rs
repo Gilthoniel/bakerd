@@ -35,6 +35,22 @@ pub struct BlockInfo {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct Event {
+  pub tag: String,
+  pub account: Option<String>,
+  pub baker_reward: Option<Decimal>,
+  pub transaction_fees: Option<Decimal>,
+  pub finalization_reward: Option<Decimal>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockSummary {
+    pub special_events: Vec<Event>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountBaker {
     pub staked_amount: Decimal,
     pub restake_earnings: bool,
@@ -79,6 +95,8 @@ pub trait NodeClient {
     async fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
 
     async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
+
+    async fn get_block_summary(&self, block_hash: &str) -> Result<BlockSummary>;
 
     async fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo>;
 
@@ -150,6 +168,18 @@ impl NodeClient for Client {
         Ok(serde_json::from_str(&response.value)?)
     }
 
+    async fn get_block_summary(&self, block_hash: &str) -> Result<BlockSummary> {
+        let mut client = self.client.clone();
+
+        let request = Request::new(ccd::BlockHash {
+            block_hash: block_hash.into(),
+        });
+
+        let response = client.get_block_summary(request).await?.into_inner();
+
+        Ok(serde_json::from_str(&response.value)?)
+    }
+
     /// It returns the details of the account like its balance and the staked
     /// amount.
     async fn get_account_info(&self, block_hash: &str, address: &str) -> Result<AccountInfo> {
@@ -216,6 +246,7 @@ mockall::mock! {
         pub fn get_last_block(&self) -> Result<Block>;
         pub fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
         pub fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
+        pub fn get_block_summary(&self, block_hash: &str) -> Result<BlockSummary>;
         pub fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo>;
         pub fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>>;
     }
@@ -234,6 +265,10 @@ impl NodeClient for MockNodeClient {
 
     async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo> {
         self.get_block_info(block_hash)
+    }
+
+    async fn get_block_summary(&self, block_hash: &str) -> Result<BlockSummary> {
+        self.get_block_summary(block_hash)
     }
 
     async fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo> {
@@ -262,6 +297,8 @@ mod integration_tests {
 
             fn get_block_info(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
 
+            fn get_block_summary(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
+
             fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> JsonResponse;
 
             fn get_birk_parameters(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
@@ -280,6 +317,10 @@ mod integration_tests {
 
         async fn get_block_info(&self, request: Request<ccd::BlockHash>) -> JsonResponse {
             self.get_block_info(request)
+        }
+
+        async fn get_block_summary(&self, request: Request<ccd::BlockHash>) -> JsonResponse {
+            self.get_block_summary(request)
         }
 
         async fn get_account_info(

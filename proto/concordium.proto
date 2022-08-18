@@ -81,6 +81,10 @@ service P2P {
   // Get information about the block.
   // A JSON schema for the return type is provided at: https://developer.concordium.software/en/mainnet/net/references/grpc.html.
   rpc GetBlockInfo(BlockHash) returns (JsonResponse) {}
+
+  // Request a summary for a block by its hash.
+  // A JSON schema for the return type is provided at: https://developer.concordium.software/en/mainnet/net/references/grpc.html.
+  rpc GetBlockSummary(BlockHash) returns (JsonResponse) {}
   
   // Get information about an account.
   // A JSON schema for the return type is provided at: https://developer.concordium.software/en/mainnet/net/references/grpc.html.
