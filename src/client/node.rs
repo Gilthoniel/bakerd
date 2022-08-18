@@ -1,5 +1,6 @@
-use super::{Baker, Balance, Block, BlockInfo, DynNodeClient, NodeClient, Result};
+use super::{DynNodeClient, Result};
 use ccd::p2p_client::P2pClient;
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::str::FromStr;
@@ -9,10 +10,59 @@ use tonic::metadata::Ascii;
 use tonic::service::Interceptor;
 use tonic::transport::Uri;
 use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
-use chrono::{DateTime, Utc};
 
 mod ccd {
     tonic::include_proto!("concordium");
+}
+
+#[derive(Debug)]
+pub struct Block {
+    pub hash: String,
+    pub height: i64,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockInfo {
+    pub block_hash: String,
+    pub block_height: i64,
+    pub finalized: bool,
+    pub block_baker: Option<i64>,
+
+    #[serde(with = "serde_with::rust::display_fromstr")]
+    pub block_slot_time: DateTime<Utc>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountBaker {
+    pub staked_amount: Decimal,
+    pub restake_earnings: bool,
+    pub baker_id: u32,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountInfo {
+    pub account_nonce: u32,
+    pub account_amount: Decimal,
+    pub account_index: u32,
+    pub account_address: String,
+    pub account_baker: Option<AccountBaker>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Baker {
+    pub baker_account: String,
+    pub baker_id: u64,
+    pub baker_lottery_power: f64,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct BirkParameters {
+    bakers: Vec<Baker>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -22,49 +72,17 @@ struct ConsensusInfo {
     last_finalized_block_height: i64,
 }
 
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-#[serde(rename_all = "camelCase")]
-struct AccountBaker {
-    staked_amount: Decimal,
-    restake_earnings: bool,
-    baker_id: u32,
-}
+#[async_trait]
+pub trait NodeClient {
+    async fn get_last_block(&self) -> Result<Block>;
 
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-#[serde(rename_all = "camelCase")]
-struct AccountInfo {
-    account_nonce: u32,
-    account_amount: Decimal,
-    account_index: u32,
-    account_address: String,
-    account_baker: AccountBaker,
-}
+    async fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct BirkBaker {
-    baker_account: String,
-    baker_id: u64,
-    baker_lottery_power: f64,
-}
+    async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct BirkParameters {
-    bakers: Vec<BirkBaker>,
-}
+    async fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo>;
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct JsonBlockInfo {
-  block_hash: String,
-  block_height: i64,
-  finalized: bool,
-  #[serde(with = "serde_with::rust::display_fromstr")]
-  block_slot_time: DateTime<Utc>,
-  block_baker: Option<i64>,
+    async fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>>;
 }
 
 pub struct Client {
@@ -107,7 +125,7 @@ impl NodeClient for Client {
     async fn get_block_at_height(&self, height: i64) -> Result<Option<String>> {
         let mut client = self.client.clone();
 
-        let request = Request::new(ccd::BlockHeight{
+        let request = Request::new(ccd::BlockHeight {
             block_height: u64::try_from(height).unwrap(),
             from_genesis_index: 0,
             restrict_to_genesis_index: false,
@@ -123,24 +141,18 @@ impl NodeClient for Client {
     async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo> {
         let mut client = self.client.clone();
 
-        let request = Request::new(ccd::BlockHash{ block_hash: block_hash.into() });
+        let request = Request::new(ccd::BlockHash {
+            block_hash: block_hash.into(),
+        });
 
         let response = client.get_block_info(request).await?.into_inner();
 
-        let info: JsonBlockInfo = serde_json::from_str(&response.value)?;
-
-        Ok(BlockInfo {
-            hash: info.block_hash,
-            height: info.block_height,
-            slot_time_ms: info.block_slot_time.timestamp_millis(),
-            baker: info.block_baker,
-            finalized: info.finalized,
-        })
+        Ok(serde_json::from_str(&response.value)?)
     }
 
     /// It returns the details of the account like its balance and the staked
     /// amount.
-    async fn get_balances(&self, block_hash: &str, address: &str) -> Result<Balance> {
+    async fn get_account_info(&self, block_hash: &str, address: &str) -> Result<AccountInfo> {
         let mut client = self.client.clone();
 
         let request = Request::new(ccd::GetAddressInfoRequest {
@@ -150,11 +162,7 @@ impl NodeClient for Client {
 
         let response = client.get_account_info(request).await?.into_inner();
 
-        let info: AccountInfo = serde_json::from_str(response.value.as_str())?;
-
-        let available = info.account_amount - info.account_baker.staked_amount;
-
-        Ok(Balance(available, info.account_baker.staked_amount))
+        Ok(serde_json::from_str(response.value.as_str())?)
     }
 
     /// It returns the baker of the account address if it exists in the
@@ -172,10 +180,7 @@ impl NodeClient for Client {
 
         for baker in params.bakers {
             if baker.baker_account == address {
-                return Ok(Some(Baker {
-                    id: baker.baker_id,
-                    lottery_power: baker.baker_lottery_power,
-                }));
+                return Ok(Some(baker));
             }
         }
 
@@ -211,7 +216,7 @@ mockall::mock! {
         pub fn get_last_block(&self) -> Result<Block>;
         pub fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
         pub fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
-        pub fn get_balances(&self, block: &str, address: &str) -> Result<Balance>;
+        pub fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo>;
         pub fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>>;
     }
 }
@@ -231,8 +236,8 @@ impl NodeClient for MockNodeClient {
         self.get_block_info(block_hash)
     }
 
-    async fn get_balances(&self, block: &str, address: &str) -> Result<Balance> {
-        self.get_balances(block, address)
+    async fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo> {
+        self.get_account_info(block, address)
     }
 
     async fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>> {
@@ -322,7 +327,8 @@ mod integration_tests {
                     value: r#"{
                         "lastFinalizedBlock": ":hash:",
                         "lastFinalizedBlockHeight": 123
-                    }"#.to_string(),
+                    }"#
+                    .to_string(),
                 }))
             });
 
@@ -334,7 +340,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn test_get_balances() {
+    async fn test_get_account_info() {
         let mut service = MockService::default();
 
         service
@@ -360,23 +366,23 @@ mod integration_tests {
 
         let client = init(service).await.unwrap();
 
-        let res = client.get_balances("hash", "addr").await.unwrap();
+        let res = client.get_account_info("hash", "addr").await.unwrap();
 
-        assert_eq!("243.5", res.0.to_string());
-        assert_eq!("12.5", res.1.to_string());
+        assert_eq!("256", res.account_amount.to_string());
+        assert_eq!("12.5", res.account_baker.unwrap().staked_amount.to_string());
     }
 
     #[tokio::test]
-    async fn test_get_balances_no_network() {
+    async fn test_get_account_info_no_network() {
         let client = Client::new("http://[::1]:8888");
 
-        let res = client.get_balances("hash", "addr").await;
+        let res = client.get_account_info("hash", "addr").await;
 
         assert!(matches!(res, Err(Error::Grpc(_))));
     }
 
     #[tokio::test]
-    async fn test_get_balances_bad_json() {
+    async fn test_get_account_info_bad_json() {
         let mut service = MockService::default();
 
         service
@@ -390,7 +396,7 @@ mod integration_tests {
 
         let client = init(service).await.unwrap();
 
-        let res = client.get_balances("hash", "addr").await;
+        let res = client.get_account_info("hash", "addr").await;
 
         assert!(matches!(res, Err(Error::Json(_))));
     }
@@ -422,7 +428,7 @@ mod integration_tests {
 
         assert!(matches!(res, Ok(baker) if matches!(
             &baker,
-            Some(baker) if baker.id == 1,
+            Some(baker) if baker.baker_id == 1,
         )));
     }
 

@@ -1,8 +1,8 @@
 use super::{AppError, AsyncJob};
-
 use crate::client::DynNodeClient;
 use crate::model::Account;
 use crate::repository::DynAccountRepository;
+use rust_decimal::Decimal;
 
 pub struct RefreshAccountsJob {
     client: DynNodeClient,
@@ -31,15 +31,19 @@ impl RefreshAccountsJob {
         let last_block = self.client.get_last_block().await?;
 
         // 2. Get the balance of the account.
-        let balances = self.client.get_balances(&last_block.hash, address).await?;
+        let info = self.client.get_account_info(&last_block.hash, address).await?;
 
-        account.set_amount(balances.0, balances.1);
+        // The response contains the total amount of CCD for the account but we
+        // store only the available (and the staked) amount.
+        let staked = info.account_baker.map(|b| b.staked_amount).unwrap_or(Decimal::ZERO);
+
+        account.set_amount(info.account_amount - staked, staked);
 
         // 3. Get the lottery power of the account.
         let baker = self.client.get_baker(&last_block.hash, address).await?;
 
         if let Some(baker) = baker {
-            account.set_lottery_power(baker.lottery_power);
+            account.set_lottery_power(baker.baker_lottery_power);
         }
 
         // 4. Finally the account is updated in the repository.
@@ -63,8 +67,7 @@ impl AsyncJob for RefreshAccountsJob {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::node::MockNodeClient;
-    use crate::client::{Baker, Balance, Block};
+    use crate::client::node::{Baker, AccountInfo, Block, MockNodeClient};
     use crate::repository::account::MockAccountRepository;
     use mockall::predicate::*;
     use rust_decimal_macros::dec;
@@ -86,10 +89,16 @@ mod tests {
             });
 
         client
-            .expect_get_balances()
+            .expect_get_account_info()
             .with(eq(":hash:"), eq(":address:"))
             .times(1)
-            .returning(|_, _| Ok(Balance(dec!(1), dec!(2.5))));
+            .returning(|_, _| Ok(AccountInfo{
+                account_nonce: 0,
+                account_amount: dec!(42),
+                account_index: 123,
+                account_address: ":address:".into(),
+                account_baker: None,
+            }));
 
         client
             .expect_get_baker()
@@ -97,8 +106,9 @@ mod tests {
             .times(1)
             .returning(|_, _| {
                 Ok(Some(Baker {
-                    id: 1,
-                    lottery_power: 0.5,
+                    baker_account: ":address:".into(),
+                    baker_id: 1,
+                    baker_lottery_power: 0.5,
                 }))
             });
 
@@ -108,8 +118,8 @@ mod tests {
             .expect_set_account()
             .withf(|account| {
                 account.get_lottery_power() == 0.5
-                    && *account.get_available() == dec!(1)
-                    && *account.get_staked() == dec!(2.5)
+                    && *account.get_available() == dec!(42)
+                    && *account.get_staked() == dec!(0)
             })
             .times(1)
             .returning(|_| Ok(()));
