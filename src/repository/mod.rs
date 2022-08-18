@@ -7,6 +7,7 @@ use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::model::{Account, Pair, Price};
 
@@ -95,12 +96,15 @@ impl AsyncPool {
 
 #[async_trait]
 pub trait AccountRepository {
+    /// It returns the account associated to the address if it exists.
     async fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
 
     /// It creates or updates an existing account using the address as the
     /// identifier.
     async fn set_account(&self, account: &Account) -> Result<(), StorageError>;
 }
+
+pub type DynAccountRepository = Arc<dyn AccountRepository + Send + Sync>;
 
 /// A repository to set and get prices of pairs.
 #[async_trait]
@@ -111,3 +115,5 @@ pub trait PriceRepository {
     /// It takes a price and insert or update the price in the storage.
     async fn set_price(&self, price: &Price) -> Result<(), StorageError>;
 }
+
+pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;

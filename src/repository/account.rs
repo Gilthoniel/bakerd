@@ -1,11 +1,8 @@
 use diesel::prelude::*;
-use std::sync::Arc;
 
 use super::{AccountRepository, AsyncPool, StorageError};
 use crate::model::Account;
 use crate::schema::accounts::dsl::*;
-
-pub type DynAccountRepository = Arc<dyn AccountRepository + Send + Sync>;
 
 mod records {
     use rust_decimal::Decimal;
@@ -54,8 +51,8 @@ pub struct SqliteAccountRepository {
 
 impl SqliteAccountRepository {
     /// It creates a new account repository using the given connection pool.
-    pub fn new(pool: AsyncPool) -> DynAccountRepository {
-        Arc::new(Self { pool })
+    pub fn new(pool: AsyncPool) -> Self {
+        Self { pool }
     }
 }
 

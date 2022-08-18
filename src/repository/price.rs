@@ -1,13 +1,10 @@
 use diesel::prelude::*;
 use diesel::replace_into;
-use std::sync::Arc;
 
 use super::{AsyncPool, PriceRepository, StorageError};
 
 use crate::model::{Pair, Price};
 use crate::schema::prices::dsl::*;
-
-pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
 
 /// Record of an account state on the blockchain.
 #[derive(Queryable)]
@@ -25,8 +22,8 @@ pub struct SqlitePriceRepository {
 }
 
 impl SqlitePriceRepository {
-    pub fn new(pool: AsyncPool) -> DynPriceRepository {
-        Arc::new(Self { pool })
+    pub fn new(pool: AsyncPool) -> Self {
+        Self { pool }
     }
 }
 

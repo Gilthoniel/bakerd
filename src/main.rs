@@ -3,14 +3,16 @@ use env_logger::Env;
 use std::collections::HashMap;
 use std::fs::File;
 use std::str::FromStr;
+use std::sync::Arc;
 
-use crate::config::Config;
-use crate::job::Jobber;
-use crate::repository::{
-    account::SqliteAccountRepository as AccountRepository,
-    price::SqlitePriceRepository as PriceRepository, AsyncPool,
-};
+use config::Config;
 use controller::AppError;
+use job::Jobber;
+use repository::{
+    account::SqliteAccountRepository as AccountRepository,
+    price::SqlitePriceRepository as PriceRepository, AsyncPool, DynAccountRepository,
+    DynPriceRepository,
+};
 
 #[macro_use]
 extern crate diesel;
@@ -30,15 +32,15 @@ mod repository;
 mod schema;
 
 struct Context {
-    account_repository: repository::account::DynAccountRepository,
-    price_repository: repository::price::DynPriceRepository,
+    account_repository: DynAccountRepository,
+    price_repository: DynPriceRepository,
 }
 
 impl Context {
     fn new(pool: &AsyncPool) -> Self {
         Self {
-            account_repository: AccountRepository::new(pool.clone()),
-            price_repository: PriceRepository::new(pool.clone()),
+            account_repository: Arc::new(AccountRepository::new(pool.clone())),
+            price_repository: Arc::new(PriceRepository::new(pool.clone())),
         }
     }
 }

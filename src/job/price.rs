@@ -1,7 +1,7 @@
 use super::{AppError, AsyncJob};
 use crate::client::PriceClient;
 use crate::model::Pair;
-use crate::repository::price::DynPriceRepository;
+use crate::repository::DynPriceRepository;
 
 type Client = Box<dyn PriceClient + Sync + Send>;
 

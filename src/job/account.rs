@@ -2,7 +2,7 @@ use super::{AppError, AsyncJob};
 
 use crate::client::DynNodeClient;
 use crate::model::Account;
-use crate::repository::account::DynAccountRepository;
+use crate::repository::DynAccountRepository;
 
 pub struct RefreshAccountsJob {
     client: DynNodeClient,

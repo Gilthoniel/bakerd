@@ -7,7 +7,7 @@ use axum::{
 
 use crate::client::Error as ClientError;
 use crate::model::{Account, Price};
-use crate::repository::{account::DynAccountRepository, price::DynPriceRepository, StorageError};
+use crate::repository::{DynAccountRepository, DynPriceRepository, StorageError};
 
 /// An global definition of errors for the application.
 #[derive(Debug)]
