@@ -1,5 +1,6 @@
 use axum::{extract::Extension, routing::get, Router};
 use env_logger::Env;
+use std::collections::HashMap;
 use std::fs::File;
 use std::str::FromStr;
 
@@ -70,23 +71,32 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
 
     let node_client = client::node::Client::new("http://127.0.0.1:10000");
 
-    for (name, schedule_str) in cfg.get_jobs() {
-        let schedule = cron::Schedule::from_str(schedule_str).unwrap();
+    for (name, schedule_str) in cfg.get_jobs().unwrap_or(&HashMap::new()) {
+        let schedule = cron::Schedule::from_str(&schedule_str).unwrap();
 
         scheduler.register(
             name.as_str(),
             schedule,
             match name {
                 config::Job::AccountsRefresher => {
-                    Box::new(job::account::RefreshAccountsJob::new(node_client.clone()))
-                },
+                    let mut job = job::account::RefreshAccountsJob::new(
+                        node_client.clone(),
+                        ctx.account_repository.clone(),
+                    );
+
+                    for address in cfg.get_accounts().unwrap_or(&vec![]) {
+                        job.follow_account(address);
+                    }
+
+                    Box::new(job)
+                }
                 config::Job::PriceRefresher => {
                     let mut job = job::price::PriceRefresher::new(
                         price_client.clone(),
                         ctx.price_repository.clone(),
                     );
 
-                    for pair in cfg.get_pairs() {
+                    for pair in cfg.get_pairs().unwrap_or(&vec![]) {
                         job.follow_pair(pair.clone());
                     }
 

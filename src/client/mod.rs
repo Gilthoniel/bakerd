@@ -39,13 +39,21 @@ pub trait PriceClient {
 }
 
 #[derive(Debug)]
-pub struct Balance (Decimal, Decimal);
+pub struct Balance(pub Decimal, pub Decimal);
+
+#[derive(Debug)]
+pub struct Baker {
+    pub id: u64,
+    pub lottery_power: f64,
+}
 
 #[async_trait]
 pub trait NodeClient {
     async fn get_last_block(&self) -> Result<String>;
 
     async fn get_balances(&self, block: &str, address: &str) -> Result<Balance>;
+
+    async fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>>;
 }
 
 pub type DynNodeClient = Arc<dyn NodeClient + Sync + Send>;

@@ -24,8 +24,9 @@ impl Job {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     listen_address: SocketAddr,
-    jobs: HashMap<Job, String>,
-    pairs: Vec<Pair>,
+    jobs: Option<HashMap<Job, String>>,
+    pairs: Option<Vec<Pair>>,
+    accounts: Option<Vec<String>>,
 }
 
 impl Config {
@@ -38,12 +39,16 @@ impl Config {
         &self.listen_address
     }
 
-    pub fn get_jobs(&self) -> &HashMap<Job, String> {
-        &self.jobs
+    pub fn get_jobs(&self) -> Option<&HashMap<Job, String>> {
+        self.jobs.as_ref()
     }
 
-    pub fn get_pairs(&self) -> &Vec<Pair> {
-        &self.pairs
+    pub fn get_pairs(&self) -> Option<&Vec<Pair>> {
+        self.pairs.as_ref()
+    }
+
+    pub fn get_accounts(&self) -> Option<&Vec<String>> {
+        self.accounts.as_ref()
     }
 }
 
@@ -51,8 +56,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
-            jobs: HashMap::new(),
-            pairs: vec![],
+            jobs: None,
+            pairs: None,
+            accounts: None,
         }
     }
 }
