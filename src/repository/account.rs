@@ -8,6 +8,8 @@ use crate::schema::accounts::dsl::*;
 pub type DynAccountRepository = Arc<dyn AccountRepository + Send + Sync>;
 
 mod records {
+    use rust_decimal::Decimal;
+
     use crate::model;
     use crate::schema::accounts;
 
@@ -24,7 +26,14 @@ mod records {
     impl From<Account> for model::Account {
         /// It creates an account from a record of the storage layer.
         fn from(record: Account) -> Self {
-            Self::new(&record.address)
+            let mut account = Self::new(&record.address);
+            account.set_lottery_power(record.lottery_power);
+            account.set_amount(
+                Decimal::from_str_exact(&record.available_amount).unwrap_or(Decimal::ZERO),
+                Decimal::from_str_exact(&record.staked_amount).unwrap_or(Decimal::ZERO),
+            );
+
+            account
         }
     }
 
@@ -55,9 +64,9 @@ impl AccountRepository for SqliteAccountRepository {
     async fn set_account(&self, account: &Account) -> Result<(), StorageError> {
         let record = records::NewAccount {
             address: account.get_address().into(),
-            available_amount: "0".into(),
-            staked_amount: "0".into(),
-            lottery_power: 0.0,
+            available_amount: account.get_available().to_string(),
+            staked_amount: account.get_staked().to_string(),
+            lottery_power: account.get_lottery_power(),
         };
 
         self.pool

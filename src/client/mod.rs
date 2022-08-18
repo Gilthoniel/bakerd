@@ -1,9 +1,10 @@
 pub mod bitfinex;
 pub mod node;
 
-use crate::model::{Pair, Price};
+use rust_decimal::Decimal;
+use std::sync::Arc;
 
-pub use self::node::Client as NodeClient;
+use crate::model::{Pair, Price};
 
 #[derive(Debug)]
 pub enum Error {
@@ -36,3 +37,15 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub trait PriceClient {
     async fn get_prices(&self, pairs: &Vec<Pair>) -> Result<Vec<Price>>;
 }
+
+#[derive(Debug)]
+pub struct Balance (Decimal, Decimal);
+
+#[async_trait]
+pub trait NodeClient {
+    async fn get_last_block(&self) -> Result<String>;
+
+    async fn get_balances(&self, block: &str, address: &str) -> Result<Balance>;
+}
+
+pub type DynNodeClient = Arc<dyn NodeClient + Sync + Send>;

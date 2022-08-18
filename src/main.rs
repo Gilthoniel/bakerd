@@ -68,6 +68,8 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
 
     let price_client = client::bitfinex::BitfinexClient::default();
 
+    let node_client = client::node::Client::new("http://127.0.0.1:10000");
+
     for (name, schedule_str) in cfg.get_jobs() {
         let schedule = cron::Schedule::from_str(schedule_str).unwrap();
 
@@ -75,7 +77,9 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
             name.as_str(),
             schedule,
             match name {
-                config::Job::AccountsRefresher => Box::new(job::account::RefreshAccountsJob::new()),
+                config::Job::AccountsRefresher => {
+                    Box::new(job::account::RefreshAccountsJob::new(node_client.clone()))
+                },
                 config::Job::PriceRefresher => {
                     let mut job = job::price::PriceRefresher::new(
                         price_client.clone(),

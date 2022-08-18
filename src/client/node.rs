@@ -5,13 +5,21 @@ use tonic::metadata::Ascii;
 use tonic::service::Interceptor;
 use tonic::transport::Uri;
 use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
+use std::str::FromStr;
+use std::sync::Arc;
 
 use ccd::p2p_client::P2pClient;
 
-use super::Result;
+use super::{DynNodeClient, NodeClient, Result, Balance};
 
 pub mod ccd {
     tonic::include_proto!("concordium");
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct ConsensusInfo {
+    last_finalized_block: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -34,36 +42,60 @@ pub struct AccountInfo {
     account_baker: AccountBaker,
 }
 
-#[derive(Clone)]
 pub struct Client {
     client: P2pClient<InterceptedService<Channel, Authorization>>,
 }
 
 impl Client {
-    pub fn new(addr: Uri) -> Self {
-        let channel = Channel::builder(addr).connect_lazy();
+    pub fn new(addr: &str) -> DynNodeClient {
+        // TODO: remove unwrap.
+        let uri = Uri::from_str(addr).unwrap();
+        let channel = Channel::builder(uri).connect_lazy();
 
         let client = P2pClient::with_interceptor(channel, Authorization::new());
 
-        Client { client }
+        Arc::new(Client { client })
+    }
+}
+
+#[async_trait]
+impl NodeClient for Client {
+    /// It fetches the current consensus status of the Concordium network of the
+    /// node and returns the hash of the last finalized block.
+    async fn get_last_block(&self) -> Result<String> {
+        let mut client = self.client.clone();
+
+        let request = Request::new(ccd::Empty {});
+
+        let response = client
+            .get_consensus_status(request)
+            .await?
+            .into_inner();
+
+        let info: ConsensusInfo = serde_json::from_str(response.value.as_str())?;
+
+        Ok(info.last_finalized_block)
     }
 
-    /// Return the details of the account like its balance and the staked amount.
-    pub async fn get_account_info(
-        &mut self,
+    /// It returns the details of the account like its balance and the staked
+    /// amount.
+    async fn get_balances(
+        &self,
         block_hash: &str,
         address: &str,
-    ) -> Result<AccountInfo> {
+    ) -> Result<Balance> {
+        let mut client = self.client.clone();
+
         let request = Request::new(ccd::GetAddressInfoRequest {
             block_hash: String::from(block_hash),
             address: String::from(address),
         });
 
-        let response = self.client.get_account_info(request).await?.into_inner();
+        let response = client.get_account_info(request).await?.into_inner();
 
-        let info = serde_json::from_str(response.value.as_str())?;
+        let info: AccountInfo = serde_json::from_str(response.value.as_str())?;
 
-        Ok(info)
+        Ok(Balance(info.account_amount, info.account_baker.staked_amount))
     }
 }
 
@@ -96,18 +128,26 @@ mod integration_tests {
     use mockall::predicate::*;
     use tonic::{Request, Response, Status};
 
+    type JsonResponse = std::result::Result<Response<ccd::JsonResponse>, Status>;
+
     mockall::mock! {
         pub Service {
-            fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> std::result::Result<Response<ccd::JsonResponse>, Status>;
+            fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse;
+
+            fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> JsonResponse;
         }
     }
 
     #[tonic::async_trait]
     impl ccd::p2p_server::P2p for MockService {
+        async fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse {
+            self.get_consensus_status(request)
+        }
+
         async fn get_account_info(
             &self,
             request: Request<ccd::GetAddressInfoRequest>,
-        ) -> std::result::Result<Response<ccd::JsonResponse>, Status> {
+        ) -> JsonResponse {
             self.get_account_info(request)
         }
     }
@@ -134,7 +174,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn test_get_account_info() {
+    async fn test_get_balances() {
         let mut service = MockService::default();
 
         service
@@ -160,18 +200,19 @@ mod integration_tests {
 
         let port = init(service).await.expect("unable to start mock server");
 
-        let mut client = Client::new(format!("http://[::1]:{}", port).parse::<Uri>().unwrap());
+        let client = Client::new(&format!("http://[::1]:{}", port));
 
-        let res = client.get_account_info("hash", "addr").await.unwrap();
+        let res = client.get_balances("hash", "addr").await.unwrap();
 
-        assert_eq!(1, res.account_nonce);
+        assert_eq!("256", res.0.to_string());
+        assert_eq!("12.123", res.1.to_string());
     }
 
     #[tokio::test]
     async fn test_get_account_info_no_network() {
-        let mut client = Client::new(Uri::from_static("http://[::1]:8888"));
+        let client = Client::new("http://[::1]:8888");
 
-        let res = client.get_account_info("hash", "addr").await;
+        let res = client.get_balances("hash", "addr").await;
 
         assert!(matches!(res, Err(Error::Grpc(_))));
     }
@@ -191,9 +232,9 @@ mod integration_tests {
 
         let port = init(service).await.expect("unable to start mock server");
 
-        let mut client = Client::new(format!("http://[::1]:{}", port).parse::<Uri>().unwrap());
+        let client = Client::new(&format!("http://[::1]:{}", port));
 
-        let res = client.get_account_info("hash", "addr").await;
+        let res = client.get_balances("hash", "addr").await;
 
         assert!(matches!(res, Err(Error::Json(_))));
     }

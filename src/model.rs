@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::repository::price::PriceRecord;
@@ -5,17 +6,50 @@ use crate::repository::price::PriceRecord;
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Account {
     address: String,
+    available_amount: Decimal,
+    staked_amount: Decimal,
+    lottery_power: f64,
 }
 
 impl Account {
     pub fn new(addr: &str) -> Self {
         Self {
             address: addr.to_string(),
+            available_amount: Decimal::ZERO,
+            staked_amount: Decimal::ZERO,
+            lottery_power: 0.0,
         }
     }
 
+    /// It returns the address unique to the account.
     pub fn get_address(&self) -> &str {
         &self.address
+    }
+
+    /// It returns the available amount of the account.
+    pub fn get_available(&self) -> &Decimal {
+        &self.available_amount
+    }
+
+    /// It returns the staked amount of the account.
+    pub fn get_staked(&self) -> &Decimal {
+        &self.staked_amount
+    }
+
+    /// It updates the available and staked amount of the account.
+    pub fn set_amount(&mut self, available: Decimal, staked_amount: Decimal) {
+        self.available_amount = available;
+        self.staked_amount = staked_amount;
+    }
+
+    /// It returns the lottery power of the account.
+    pub fn get_lottery_power(&self) -> f64 {
+        self.lottery_power
+    }
+
+    /// It updates the lottery power of the account.
+    pub fn set_lottery_power(&mut self, power: f64) {
+        self.lottery_power = power;
     }
 }
 

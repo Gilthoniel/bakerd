@@ -1,25 +1,27 @@
 use super::{AppError, AsyncJob};
-use crate::client::NodeClient;
-use tonic::transport::Uri;
+
+use crate::client::DynNodeClient;
 
 pub struct RefreshAccountsJob {
-    client: NodeClient,
+    client: DynNodeClient,
 }
 
 impl RefreshAccountsJob {
-    pub fn new() -> Self {
-        Self {
-            client: NodeClient::new(Uri::from_static("http://127.0.0.1:10000")),
-        }
+    pub fn new(client: DynNodeClient) -> Self {
+        Self { client }
     }
 }
 
 #[async_trait]
 impl AsyncJob for RefreshAccountsJob {
     async fn execute(&self) -> Result<(), AppError> {
-        let mut client = self.client.clone();
+        let hash = self.client.get_last_block().await?;
 
-        client.get_account_info("hash", "addr").await?;
+        let balances = self.client
+            .get_balances(&hash, "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p")
+            .await?;
+
+        println!("{:?}", balances);
 
         Ok(())
     }
