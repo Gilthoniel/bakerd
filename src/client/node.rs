@@ -1,4 +1,4 @@
-use super::{Baker, Balance, Block, DynNodeClient, NodeClient, Result};
+use super::{Baker, Balance, Block, BlockInfo, DynNodeClient, NodeClient, Result};
 use ccd::p2p_client::P2pClient;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -9,6 +9,7 @@ use tonic::metadata::Ascii;
 use tonic::service::Interceptor;
 use tonic::transport::Uri;
 use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
+use chrono::{DateTime, Utc};
 
 mod ccd {
     tonic::include_proto!("concordium");
@@ -55,6 +56,17 @@ struct BirkParameters {
     bakers: Vec<BirkBaker>,
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonBlockInfo {
+  block_hash: String,
+  block_height: i64,
+  finalized: bool,
+  #[serde(with = "serde_with::rust::display_fromstr")]
+  block_slot_time: DateTime<Utc>,
+  block_baker: Option<i64>,
+}
+
 pub struct Client {
     client: P2pClient<InterceptedService<Channel, Authorization>>,
 }
@@ -90,6 +102,40 @@ impl NodeClient for Client {
         };
 
         Ok(block)
+    }
+
+    async fn get_block_at_height(&self, height: i64) -> Result<Option<String>> {
+        let mut client = self.client.clone();
+
+        let request = Request::new(ccd::BlockHeight{
+            block_height: u64::try_from(height).unwrap(),
+            from_genesis_index: 0,
+            restrict_to_genesis_index: false,
+        });
+
+        let response = client.get_blocks_at_height(request).await?.into_inner();
+
+        let mut hashes: Vec<String> = serde_json::from_str(&response.value)?;
+
+        Ok(hashes.pop())
+    }
+
+    async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo> {
+        let mut client = self.client.clone();
+
+        let request = Request::new(ccd::BlockHash{ block_hash: block_hash.into() });
+
+        let response = client.get_block_info(request).await?.into_inner();
+
+        let info: JsonBlockInfo = serde_json::from_str(&response.value)?;
+
+        Ok(BlockInfo {
+            hash: info.block_hash,
+            height: info.block_height,
+            slot_time_ms: info.block_slot_time.timestamp_millis(),
+            baker: info.block_baker,
+            finalized: info.finalized,
+        })
     }
 
     /// It returns the details of the account like its balance and the staked
@@ -163,6 +209,8 @@ impl Interceptor for Authorization {
 mockall::mock! {
     pub NodeClient {
         pub fn get_last_block(&self) -> Result<Block>;
+        pub fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
+        pub fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
         pub fn get_balances(&self, block: &str, address: &str) -> Result<Balance>;
         pub fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>>;
     }
@@ -173,6 +221,14 @@ mockall::mock! {
 impl NodeClient for MockNodeClient {
     async fn get_last_block(&self) -> Result<Block> {
         self.get_last_block()
+    }
+
+    async fn get_block_at_height(&self, height: i64) -> Result<Option<String>> {
+        self.get_block_at_height(height)
+    }
+
+    async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo> {
+        self.get_block_info(block_hash)
     }
 
     async fn get_balances(&self, block: &str, address: &str) -> Result<Balance> {
@@ -197,6 +253,10 @@ mod integration_tests {
         pub Service {
             fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse;
 
+            fn get_blocks_at_height(&self, request: Request<ccd::BlockHeight>) -> JsonResponse;
+
+            fn get_block_info(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
+
             fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> JsonResponse;
 
             fn get_birk_parameters(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
@@ -207,6 +267,14 @@ mod integration_tests {
     impl ccd::p2p_server::P2p for MockService {
         async fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse {
             self.get_consensus_status(request)
+        }
+
+        async fn get_blocks_at_height(&self, request: Request<ccd::BlockHeight>) -> JsonResponse {
+            self.get_blocks_at_height(request)
+        }
+
+        async fn get_block_info(&self, request: Request<ccd::BlockHash>) -> JsonResponse {
+            self.get_block_info(request)
         }
 
         async fn get_account_info(

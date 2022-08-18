@@ -45,6 +45,15 @@ pub struct Block {
 }
 
 #[derive(Debug)]
+pub struct BlockInfo {
+    pub hash: String,
+    pub height: i64,
+    pub slot_time_ms: i64,
+    pub baker: Option<i64>,
+    pub finalized: bool,
+}
+
+#[derive(Debug)]
 pub struct Balance(pub Decimal, pub Decimal);
 
 #[derive(Debug)]
@@ -56,6 +65,10 @@ pub struct Baker {
 #[async_trait]
 pub trait NodeClient {
     async fn get_last_block(&self) -> Result<Block>;
+
+    async fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
+
+    async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
 
     async fn get_balances(&self, block: &str, address: &str) -> Result<Balance>;
 
