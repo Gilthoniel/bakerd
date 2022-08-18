@@ -1,6 +1,7 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::repository::block::records::Block as BlockRecord;
 use crate::repository::price::PriceRecord;
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -103,6 +104,31 @@ impl From<PriceRecord> for Price {
             pair: Pair(record.base, record.quote),
             bid: record.bid,
             ask: record.ask,
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Serialize, Debug)]
+pub struct Block {
+    height: i64,
+    hash: String,
+    slot_time_ms: i64,
+    baker: i64,
+}
+
+impl Block {
+    pub fn get_height(&self) -> i64 {
+        self.height
+    }
+}
+
+impl From<BlockRecord> for Block {
+    fn from(record: BlockRecord) -> Self {
+        Self {
+            height: record.height,
+            hash: record.hash,
+            slot_time_ms: record.slot_time_ms,
+            baker: record.baker,
         }
     }
 }

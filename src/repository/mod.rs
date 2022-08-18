@@ -1,4 +1,5 @@
 pub mod account;
+pub mod block;
 pub mod price;
 
 use axum::http::StatusCode;
@@ -10,6 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::model::{Account, Pair, Price};
+use crate::repository::block::BlockRepository;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -117,3 +119,5 @@ pub trait PriceRepository {
 }
 
 pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
+
+pub type DynBlockRepository = Arc<dyn BlockRepository + Sync + Send>;

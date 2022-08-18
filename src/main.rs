@@ -9,9 +9,9 @@ use config::Config;
 use controller::AppError;
 use job::Jobber;
 use repository::{
-    account::SqliteAccountRepository as AccountRepository,
+    account::SqliteAccountRepository as AccountRepository, block::SqliteBlockRepository,
     price::SqlitePriceRepository as PriceRepository, AsyncPool, DynAccountRepository,
-    DynPriceRepository,
+    DynBlockRepository, DynPriceRepository,
 };
 
 #[macro_use]
@@ -34,6 +34,7 @@ mod schema;
 struct Context {
     account_repository: DynAccountRepository,
     price_repository: DynPriceRepository,
+    block_repository: DynBlockRepository,
 }
 
 impl Context {
@@ -41,6 +42,7 @@ impl Context {
         Self {
             account_repository: Arc::new(AccountRepository::new(pool.clone())),
             price_repository: Arc::new(PriceRepository::new(pool.clone())),
+            block_repository: Arc::new(SqliteBlockRepository::new(pool.clone())),
         }
     }
 }
@@ -129,6 +131,7 @@ async fn create_app(ctx: &Context) -> Router {
         .route("/prices/:pair", get(controller::get_price))
         .layer(Extension(ctx.account_repository.clone()))
         .layer(Extension(ctx.price_repository.clone()))
+        .layer(Extension(ctx.block_repository.clone()))
 }
 
 /// It schedules the different jobs from the configuration and start the server.
