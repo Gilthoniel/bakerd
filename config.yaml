@@ -6,5 +6,6 @@ pairs:
 accounts:
   - "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p"
 jobs:
-  accounts_refresher: "*/5 * * * * *"
+  accounts_refresher: "*/30 * * * * *"
   price_refresher: "*/30 * * * * *"
+  block_fetcher: "*/5 * * * * *"

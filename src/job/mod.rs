@@ -1,4 +1,5 @@
 pub mod account;
+pub mod block;
 pub mod price;
 
 use cron::Schedule;

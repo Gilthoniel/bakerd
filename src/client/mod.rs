@@ -39,6 +39,12 @@ pub trait PriceClient {
 }
 
 #[derive(Debug)]
+pub struct Block {
+    pub hash: String,
+    pub height: i64,
+}
+
+#[derive(Debug)]
 pub struct Balance(pub Decimal, pub Decimal);
 
 #[derive(Debug)]
@@ -49,7 +55,7 @@ pub struct Baker {
 
 #[async_trait]
 pub trait NodeClient {
-    async fn get_last_block(&self) -> Result<String>;
+    async fn get_last_block(&self) -> Result<Block>;
 
     async fn get_balances(&self, block: &str, address: &str) -> Result<Balance>;
 

@@ -1,3 +1,5 @@
+use super::{Baker, Balance, Block, DynNodeClient, NodeClient, Result};
+use ccd::p2p_client::P2pClient;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::str::FromStr;
@@ -8,11 +10,7 @@ use tonic::service::Interceptor;
 use tonic::transport::Uri;
 use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
 
-use ccd::p2p_client::P2pClient;
-
-use super::{Baker, Balance, DynNodeClient, NodeClient, Result};
-
-pub mod ccd {
+mod ccd {
     tonic::include_proto!("concordium");
 }
 
@@ -20,6 +18,7 @@ pub mod ccd {
 #[serde(rename_all = "camelCase")]
 struct ConsensusInfo {
     last_finalized_block: String,
+    last_finalized_block_height: i64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -76,7 +75,7 @@ impl Client {
 impl NodeClient for Client {
     /// It fetches the current consensus status of the Concordium network of the
     /// node and returns the hash of the last finalized block.
-    async fn get_last_block(&self) -> Result<String> {
+    async fn get_last_block(&self) -> Result<Block> {
         let mut client = self.client.clone();
 
         let request = Request::new(ccd::Empty {});
@@ -85,7 +84,12 @@ impl NodeClient for Client {
 
         let info: ConsensusInfo = serde_json::from_str(response.value.as_str())?;
 
-        Ok(info.last_finalized_block)
+        let block = Block {
+            hash: info.last_finalized_block,
+            height: info.last_finalized_block_height,
+        };
+
+        Ok(block)
     }
 
     /// It returns the details of the account like its balance and the staked
@@ -158,7 +162,7 @@ impl Interceptor for Authorization {
 #[cfg(test)]
 mockall::mock! {
     pub NodeClient {
-        pub fn get_last_block(&self) -> Result<String>;
+        pub fn get_last_block(&self) -> Result<Block>;
         pub fn get_balances(&self, block: &str, address: &str) -> Result<Balance>;
         pub fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>>;
     }
@@ -167,7 +171,7 @@ mockall::mock! {
 #[cfg(test)]
 #[async_trait]
 impl NodeClient for MockNodeClient {
-    async fn get_last_block(&self) -> Result<String> {
+    async fn get_last_block(&self) -> Result<Block> {
         self.get_last_block()
     }
 
@@ -247,7 +251,10 @@ mod integration_tests {
             .times(1)
             .returning(|_| {
                 Ok(Response::new(ccd::JsonResponse {
-                    value: r#"{"lastFinalizedBlock": ":hash:"}"#.to_string(),
+                    value: r#"{
+                        "lastFinalizedBlock": ":hash:",
+                        "lastFinalizedBlockHeight": 123
+                    }"#.to_string(),
                 }))
             });
 
@@ -255,7 +262,7 @@ mod integration_tests {
 
         let res = client.get_last_block().await;
 
-        assert!(matches!(res, Ok(hash) if hash == ":hash:"),);
+        assert!(matches!(res, Ok(block) if block.hash == ":hash:"),);
     }
 
     #[tokio::test]

@@ -10,6 +10,7 @@ use crate::model::Pair;
 pub enum Job {
     AccountsRefresher,
     PriceRefresher,
+    BlockFetcher,
 }
 
 impl Job {
@@ -17,6 +18,7 @@ impl Job {
         match self {
             Self::AccountsRefresher => "accounts-refresher",
             Self::PriceRefresher => "price-refresher",
+            Self::BlockFetcher => "block-fetcher",
         }
     }
 }

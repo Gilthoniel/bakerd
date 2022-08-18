@@ -28,15 +28,15 @@ impl RefreshAccountsJob {
 
         // 1. Get the latest block hash of the consensus to get the most up to
         //    date information.
-        let hash = self.client.get_last_block().await?;
+        let last_block = self.client.get_last_block().await?;
 
         // 2. Get the balance of the account.
-        let balances = self.client.get_balances(&hash, address).await?;
+        let balances = self.client.get_balances(&last_block.hash, address).await?;
 
         account.set_amount(balances.0, balances.1);
 
         // 3. Get the lottery power of the account.
-        let baker = self.client.get_baker(&hash, address).await?;
+        let baker = self.client.get_baker(&last_block.hash, address).await?;
 
         if let Some(baker) = baker {
             account.set_lottery_power(baker.lottery_power);
@@ -64,7 +64,7 @@ impl AsyncJob for RefreshAccountsJob {
 mod tests {
     use super::*;
     use crate::client::node::MockNodeClient;
-    use crate::client::{Baker, Balance};
+    use crate::client::{Baker, Balance, Block};
     use crate::repository::account::MockAccountRepository;
     use mockall::predicate::*;
     use rust_decimal_macros::dec;
@@ -78,7 +78,12 @@ mod tests {
             .expect_get_last_block()
             .with()
             .times(1)
-            .returning(|| Ok(":hash:".to_string()));
+            .returning(|| {
+                Ok(Block {
+                    hash: ":hash:".to_string(),
+                    height: 0,
+                })
+            });
 
         client
             .expect_get_balances()

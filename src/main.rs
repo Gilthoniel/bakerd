@@ -106,6 +106,10 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
 
                     Box::new(job)
                 }
+                config::Job::BlockFetcher => Box::new(job::block::BlockFetcher::new(
+                    node_client.clone(),
+                    ctx.block_repository.clone(),
+                )),
             },
         );
     }
