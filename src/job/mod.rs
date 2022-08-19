@@ -1,6 +1,7 @@
 pub mod account;
 pub mod block;
 pub mod price;
+pub mod status;
 
 use cron::Schedule;
 use log::{error, info, warn};

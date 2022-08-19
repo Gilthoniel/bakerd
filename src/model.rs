@@ -3,9 +3,12 @@ use crate::repository::account::records::{
 };
 use crate::repository::block::records::Block as BlockRecord;
 use crate::repository::price::PriceRecord;
+use crate::repository::status::records::Status as StatusRecord;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+/// An account on the Concordium blockchain. It is uniquely identified through
+/// the address.
 #[derive(PartialEq, Clone, Debug, Serialize)]
 pub struct Account {
     id: i32,
@@ -16,6 +19,7 @@ pub struct Account {
 }
 
 impl Account {
+    /// It returns the ID of the account in the storage layer.
     pub fn get_id(&self) -> i32 {
         return self.id;
     }
@@ -55,7 +59,8 @@ impl From<SqlRewardKind> for RewardKind {
     }
 }
 
-// A reward of a baker.
+/// A reward of a baker which can be either a baker reward or the transaction
+/// fees.
 #[derive(Serialize, Debug)]
 pub struct Reward {
     id: i32,
@@ -79,6 +84,7 @@ impl From<RewardRecord> for Reward {
     }
 }
 
+/// A unique combination of a base and a quote currency.
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub struct Pair(String, String);
 
@@ -98,6 +104,7 @@ impl From<(&str, &str)> for Pair {
     }
 }
 
+/// A price (bid and ask) of a unique pair.
 #[derive(PartialEq, Clone, Serialize, Debug)]
 pub struct Price {
     pair: Pair,
@@ -133,6 +140,7 @@ impl From<PriceRecord> for Price {
     }
 }
 
+/// A block of the Concordium blockchain.
 #[derive(PartialEq, Clone, Serialize, Debug)]
 pub struct Block {
     height: i64,
@@ -154,6 +162,36 @@ impl From<BlockRecord> for Block {
             hash: record.hash,
             slot_time_ms: record.slot_time_ms,
             baker: record.baker,
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct ResourceStatus {
+    avg_cpu_load: Option<f32>,
+    mem_free: Option<u64>,
+    mem_total: Option<u64>,
+    uptime_secs: Option<u64>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct Status {
+    id: i32,
+    resources: ResourceStatus,
+    timestamp_ms: i64,
+}
+
+impl From<StatusRecord> for Status {
+    fn from(record: StatusRecord) -> Self {
+        Self {
+            id: record.id,
+            resources: ResourceStatus {
+                avg_cpu_load: record.resources.avg_cpu_load,
+                mem_free: record.resources.mem_free,
+                mem_total: record.resources.mem_total,
+                uptime_secs: record.resources.uptime_secs,
+            },
+            timestamp_ms: record.timestamp_ms,
         }
     }
 }

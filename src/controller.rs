@@ -1,13 +1,15 @@
 use axum::{
     extract::{Extension, Path},
     http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     Json,
 };
 
 use crate::client::Error as ClientError;
-use crate::model::{Account, Price, Reward};
-use crate::repository::{DynAccountRepository, DynPriceRepository, StorageError};
+use crate::model::{Account, Price, Reward, Status};
+use crate::repository::{
+    DynAccountRepository, DynPriceRepository, DynStatusRepository, StorageError,
+};
 
 /// An global definition of errors for the application.
 #[derive(Debug)]
@@ -43,8 +45,12 @@ impl From<ClientError> for AppError {
 }
 
 /// Controller to return the status of the application.
-pub async fn status() -> Html<&'static str> {
-    Html("{}")
+pub async fn status(
+    Extension(repository): Extension<DynStatusRepository>,
+) -> Result<Json<Status>, AppError> {
+    let status = repository.get_last_report().await?;
+
+    Ok(status.into())
 }
 
 /// A controller to return the account associated with the address.
@@ -89,9 +95,7 @@ mod tests {
     use super::*;
     use crate::model::Pair;
     use crate::repository::account::records::{
-        Account as AccountRecord,
-        Reward as RewardRecord,
-        RewardKind,
+        Account as AccountRecord, Reward as RewardRecord, RewardKind,
     };
     use crate::repository::account::MockAccountRepository;
     use crate::repository::price::MockPriceRepository;
@@ -172,28 +176,30 @@ mod tests {
             .expect_get_account()
             .with(eq(":address:"))
             .times(1)
-            .returning(|_| Ok(Account::from(AccountRecord{
-                id: 1,
-                address: ":address:".into(),
-                available_amount: "125".into(),
-                staked_amount: "50".into(),
-                lottery_power: 0.06,
-            })));
+            .returning(|_| {
+                Ok(Account::from(AccountRecord {
+                    id: 1,
+                    address: ":address:".into(),
+                    available_amount: "125".into(),
+                    staked_amount: "50".into(),
+                    lottery_power: 0.06,
+                }))
+            });
 
         repository
             .expect_get_rewards()
             .withf(|a| a.get_id() == 1)
             .times(1)
-            .returning(|_| Ok(vec![
-                Reward::from(RewardRecord {
+            .returning(|_| {
+                Ok(vec![Reward::from(RewardRecord {
                     id: 1,
                     account_id: 1,
                     block_hash: ":hash:".to_string(),
                     amount: "25.76".to_string(),
                     epoch_ms: 0,
                     kind: RewardKind::TransactionFee,
-                }),
-            ]));
+                })])
+            });
 
         let res = get_account_rewards(
             Path(":address:".to_string()),

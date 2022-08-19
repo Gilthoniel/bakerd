@@ -1,11 +1,13 @@
 pub mod account;
 pub mod block;
 pub mod price;
+pub mod status;
 
+use self::account::AccountRepository;
+use self::block::BlockRepository;
+use self::status::StatusRepository;
 use crate::model::{Pair, Price};
-use account::AccountRepository;
 use axum::http::StatusCode;
-use block::BlockRepository;
 use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
@@ -111,3 +113,5 @@ pub trait PriceRepository {
 pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
 
 pub type DynBlockRepository = Arc<dyn BlockRepository + Sync + Send>;
+
+pub type DynStatusRepository = Arc<dyn StatusRepository + Sync + Send>;

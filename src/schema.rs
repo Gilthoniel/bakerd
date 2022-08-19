@@ -38,6 +38,14 @@ table! {
     }
 }
 
+table! {
+    statuses (id) {
+        id -> Integer,
+        resources -> Text,
+        timestamp_ms -> BigInt,
+    }
+}
+
 joinable!(account_rewards -> accounts (account_id));
 
-allow_tables_to_appear_in_same_query!(account_rewards, accounts, blocks, prices,);
+allow_tables_to_appear_in_same_query!(account_rewards, accounts, blocks, prices, statuses,);

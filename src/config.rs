@@ -11,6 +11,7 @@ pub enum Job {
     AccountsRefresher,
     PriceRefresher,
     BlockFetcher,
+    StatusChecker,
 }
 
 impl Job {
@@ -19,6 +20,7 @@ impl Job {
             Self::AccountsRefresher => "accounts-refresher",
             Self::PriceRefresher => "price-refresher",
             Self::BlockFetcher => "block-fetcher",
+            Self::StatusChecker => "status-checker",
         }
     }
 }

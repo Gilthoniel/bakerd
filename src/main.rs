@@ -8,10 +8,11 @@ use std::sync::Arc;
 use config::Config;
 use controller::AppError;
 use job::Jobber;
+use repository::status::SqliteStatusRepository;
 use repository::{
     account::SqliteAccountRepository as AccountRepository, block::SqliteBlockRepository,
     price::SqlitePriceRepository as PriceRepository, AsyncPool, DynAccountRepository,
-    DynBlockRepository, DynPriceRepository,
+    DynBlockRepository, DynPriceRepository, DynStatusRepository,
 };
 
 #[macro_use]
@@ -35,6 +36,7 @@ struct Context {
     account_repository: DynAccountRepository,
     price_repository: DynPriceRepository,
     block_repository: DynBlockRepository,
+    status_repository: DynStatusRepository,
 }
 
 impl Context {
@@ -43,6 +45,7 @@ impl Context {
             account_repository: Arc::new(AccountRepository::new(pool.clone())),
             price_repository: Arc::new(PriceRepository::new(pool.clone())),
             block_repository: Arc::new(SqliteBlockRepository::new(pool.clone())),
+            status_repository: Arc::new(SqliteStatusRepository::new(pool.clone())),
         }
     }
 }
@@ -119,6 +122,9 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
 
                     Box::new(job)
                 }
+                config::Job::StatusChecker => Box::new(job::status::StatusChecker::new(
+                    ctx.status_repository.clone(),
+                )),
             },
         );
     }
@@ -149,6 +155,7 @@ async fn create_app(ctx: &Context) -> Router {
         .layer(Extension(ctx.account_repository.clone()))
         .layer(Extension(ctx.price_repository.clone()))
         .layer(Extension(ctx.block_repository.clone()))
+        .layer(Extension(ctx.status_repository.clone()))
 }
 
 /// It schedules the different jobs from the configuration and start the server.

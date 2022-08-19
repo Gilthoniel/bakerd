@@ -8,4 +8,5 @@ accounts:
 jobs:
   accounts_refresher: "*/30 * * * * *"
   price_refresher: "*/30 * * * * *"
-  block_fetcher: "*/5 * * * * *"
+  block_fetcher: "*/30 * * * * *"
+  status_checker: "*/2 * * * * *"
