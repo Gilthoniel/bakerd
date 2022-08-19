@@ -90,6 +90,31 @@ impl BlockRepository for SqliteBlockRepository {
 }
 
 #[cfg(test)]
+mockall::mock! {
+    pub BlockRepository {
+        pub fn get_last_block(&self) -> Result<Block, StorageError>;
+        pub fn store(&self, block: NewBlock) -> Result<(), StorageError>;
+        pub fn garbage_collect(&self, before: DateTime<Utc>) -> Result<(), StorageError>;
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl BlockRepository for MockBlockRepository {
+    async fn get_last_block(&self) -> Result<Block, StorageError> {
+        self.get_last_block()
+    }
+
+    async fn store(&self, block: NewBlock) -> Result<(), StorageError> {
+        self.store(block)
+    }
+
+    async fn garbage_collect(&self, before: DateTime<Utc>) -> Result<(), StorageError> {
+        self.garbage_collect(before)
+    }
+}
+
+#[cfg(test)]
 mod integration_tests {
     use super::*;
     use crate::repository::AsyncPool;

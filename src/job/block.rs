@@ -8,6 +8,8 @@ use log::{info, warn};
 use rust_decimal::Decimal;
 use std::collections::HashSet;
 
+const EVENT_TAG_REWARD: &str = "PaydayAccountReward";
+
 pub struct BlockFetcher {
     client: DynNodeClient,
     block_repository: DynBlockRepository,
@@ -63,7 +65,7 @@ impl BlockFetcher {
             .await?;
 
         for event in summary.special_events {
-            if event.tag != "PaydayAccountReward" {
+            if event.tag != EVENT_TAG_REWARD {
                 continue;
             }
 
@@ -137,4 +139,112 @@ impl AsyncJob for BlockFetcher {
 /// optional value is empty, zero is returned.
 fn to_amount(value: Option<Decimal>) -> String {
     value.unwrap_or(Decimal::ZERO).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::node::{BlockInfo, BlockSummary, Event, MockNodeClient};
+    use crate::model::{Account, Block};
+    use crate::repository::account::records::Account as AccountRecord;
+    use crate::repository::account::MockAccountRepository;
+    use crate::repository::block::records::Block as BlockRecord;
+    use crate::repository::block::MockBlockRepository;
+    use chrono::Utc;
+    use rust_decimal_macros::dec;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_execute() {
+        let mut client = MockNodeClient::new();
+
+        client.expect_get_last_block().times(1).returning(|| {
+            Ok(crate::client::node::Block {
+                hash: ":hash-125:".to_string(),
+                height: 125,
+            })
+        });
+
+        client
+            .expect_get_block_at_height()
+            .times(2)
+            .returning(|height| match height {
+                101 => Ok(Some(":hash-101:".to_string())),
+                _ => Ok(None),
+            });
+
+        client.expect_get_block_info().times(1).returning(|_| {
+            Ok(BlockInfo {
+                block_hash: ":hash-101:".to_string(),
+                block_height: 101,
+                finalized: true,
+                block_baker: Some(42),
+                block_slot_time: Utc::now(),
+            })
+        });
+
+        client.expect_get_block_summary().times(1).returning(|_| {
+            Ok(BlockSummary {
+                special_events: vec![Event {
+                    tag: EVENT_TAG_REWARD.to_string(),
+                    account: Some(":address:".to_string()),
+                    baker_reward: Some(dec!(2.5)),
+                    transaction_fees: Some(dec!(0.125)),
+                    finalization_reward: None,
+                }],
+            })
+        });
+
+        let mut block_repository = MockBlockRepository::new();
+
+        block_repository
+            .expect_get_last_block()
+            .times(1)
+            .returning(|| {
+                Ok(Block::from(BlockRecord {
+                    id: 1,
+                    height: 100,
+                    hash: ":hash-100:".to_string(),
+                    slot_time_ms: 0,
+                    baker: 42,
+                }))
+            });
+
+        block_repository
+            .expect_store()
+            .times(1)
+            .returning(|_| Ok(()));
+
+        let mut account_repository = MockAccountRepository::new();
+
+        account_repository
+            .expect_get_account()
+            .times(1)
+            .returning(|_| {
+                Ok(Account::from(AccountRecord {
+                    id: 1,
+                    address: ":address:".to_string(),
+                    available_amount: "0".to_string(),
+                    staked_amount: "0".to_string(),
+                    lottery_power: 0.0,
+                }))
+            });
+
+        account_repository
+            .expect_set_reward()
+            .times(2)
+            .returning(|_| Ok(()));
+
+        let mut job = BlockFetcher::new(
+            Arc::new(client),
+            Arc::new(block_repository),
+            Arc::new(account_repository),
+        );
+
+        job.follow_account(":address:");
+
+        let res = job.execute().await;
+
+        assert!(matches!(res, Ok(_)));
+    }
 }

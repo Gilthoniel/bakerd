@@ -381,6 +381,79 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn test_get_block_at_height() {
+        let mut service = MockService::default();
+
+        service
+            .expect_get_blocks_at_height()
+            .withf(|r| r.get_ref().block_height == 42)
+            .times(1)
+            .returning(|_| {
+                Ok(Response::new(ccd::JsonResponse {
+                    value: "[\":hash:\"]".to_string(),
+                }))
+            });
+
+        let client = init(service).await.unwrap();
+
+        let res = client.get_block_at_height(42).await;
+
+        assert!(matches!(res, Ok(hash) if hash == Some(":hash:".to_string())));
+    }
+
+    #[tokio::test]
+    async fn test_get_block_info() {
+        let mut service = MockService::default();
+
+        service
+            .expect_get_block_info()
+            .withf(|r| r.get_ref().block_hash == ":hash:")
+            .times(1)
+            .returning(|_| {
+                Ok(Response::new(ccd::JsonResponse {
+                    value: r#"{
+                        "blockHash": ":hash:",
+                        "blockHeight": 3,
+                        "finalized": true,
+                        "blockBaker": 42,
+                        "blockSlotTime": "2022-08-19T09:03:40Z"
+                    }"#
+                    .to_string(),
+                }))
+            });
+
+        let client = init(service).await.unwrap();
+
+        let res = client.get_block_info(":hash:").await;
+
+        assert!(matches!(res, Ok(info) if info.finalized));
+    }
+
+    #[tokio::test]
+    async fn test_get_block_summary() {
+        let mut service = MockService::default();
+
+        service
+            .expect_get_block_summary()
+            .withf(|r| r.get_ref().block_hash == ":hash:")
+            .times(1)
+            .returning(|_| {
+                Ok(Response::new(ccd::JsonResponse {
+                    value: r#"{
+                        "specialEvents": []
+                    }"#
+                    .to_string(),
+                }))
+            });
+
+        let client = init(service).await.unwrap();
+
+        let res = client.get_block_summary(":hash:").await;
+
+        assert!(matches!(res, Ok(_)));
+    }
+
+    #[tokio::test]
     async fn test_get_account_info() {
         let mut service = MockService::default();
 

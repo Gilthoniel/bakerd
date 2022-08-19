@@ -57,6 +57,7 @@ pub async fn get_account(
     Ok(account.into())
 }
 
+/// A controller to return the rewards of an account.
 pub async fn get_account_rewards(
     Path(addr): Path<String>,
     Extension(repository): Extension<DynAccountRepository>,
@@ -87,7 +88,11 @@ pub async fn get_price(
 mod tests {
     use super::*;
     use crate::model::Pair;
-    use crate::repository::account::records::Account as AccountRecord;
+    use crate::repository::account::records::{
+        Account as AccountRecord,
+        Reward as RewardRecord,
+        RewardKind,
+    };
     use crate::repository::account::MockAccountRepository;
     use crate::repository::price::MockPriceRepository;
     use axum::http::StatusCode;
@@ -142,7 +147,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_account_not_found() {
-        let mut repository = MockAccountRepository::default();
+        let mut repository = MockAccountRepository::new();
 
         let addr = "some-address";
 
@@ -157,6 +162,45 @@ mod tests {
         assert!(
             matches!(res, Err(AppError::Storage(e)) if e.status_code().0 == StatusCode::NOT_FOUND)
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_account_rewards() {
+        let mut repository = MockAccountRepository::new();
+
+        repository
+            .expect_get_account()
+            .with(eq(":address:"))
+            .times(1)
+            .returning(|_| Ok(Account::from(AccountRecord{
+                id: 1,
+                address: ":address:".into(),
+                available_amount: "125".into(),
+                staked_amount: "50".into(),
+                lottery_power: 0.06,
+            })));
+
+        repository
+            .expect_get_rewards()
+            .withf(|a| a.get_id() == 1)
+            .times(1)
+            .returning(|_| Ok(vec![
+                Reward::from(RewardRecord {
+                    id: 1,
+                    account_id: 1,
+                    block_hash: ":hash:".to_string(),
+                    amount: "25.76".to_string(),
+                    epoch_ms: 0,
+                    kind: RewardKind::TransactionFee,
+                }),
+            ]));
+
+        let res = get_account_rewards(
+            Path(":address:".to_string()),
+            Extension(Arc::new(repository)),
+        );
+
+        assert!(matches!(res.await, Ok(rewards) if rewards.len() == 1));
     }
 
     #[tokio::test]

@@ -247,4 +247,50 @@ mod integration_tests {
 
         assert_eq!(Account::from(expect), res);
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_get_rewards() {
+        let pool = AsyncPool::new(":memory:");
+        pool.run_migrations().await.unwrap();
+
+        let repository = SqliteAccountRepository::new(pool);
+
+        repository
+            .set_account(NewAccount {
+                address: ":address:".to_string(),
+                available_amount: "0".to_string(),
+                staked_amount: "0".to_string(),
+                lottery_power: 0.0,
+            })
+            .await
+            .unwrap();
+
+        let account = repository.get_account(":address:").await.unwrap();
+
+        repository
+            .set_reward(NewReward {
+                account_id: account.get_id(),
+                block_hash: ":hash:".to_string(),
+                amount: "0.125".to_string(),
+                epoch_ms: 0,
+                kind: RewardKind::Baker,
+            })
+            .await
+            .unwrap();
+
+        repository
+            .set_reward(NewReward {
+                account_id: account.get_id(),
+                block_hash: ":hash:".to_string(),
+                amount: "0.525".to_string(),
+                epoch_ms: 0,
+                kind: RewardKind::TransactionFee,
+            })
+            .await
+            .unwrap();
+
+        let res = repository.get_rewards(&account).await;
+
+        assert!(matches!(res, Ok(rewards) if rewards.len() == 2));
+    }
 }
