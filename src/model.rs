@@ -1,67 +1,34 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::repository::account::records::Account as AccountRecord;
 use crate::repository::block::records::Block as BlockRecord;
 use crate::repository::price::PriceRecord;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(PartialEq, Clone, Debug, Serialize)]
 pub struct Account {
+    id: i32,
     address: String,
     available_amount: Decimal,
     staked_amount: Decimal,
     lottery_power: f64,
 }
 
-impl Account {
-    pub fn new(addr: &str) -> Self {
+impl From<AccountRecord> for Account {
+    /// It creates an account from a record of the storage layer.
+    fn from(record: AccountRecord) -> Self {
         Self {
-            address: addr.to_string(),
-            available_amount: Decimal::ZERO,
-            staked_amount: Decimal::ZERO,
-            lottery_power: 0.0,
+            id: record.id,
+            address: record.address,
+            available_amount: to_decimal(&record.available_amount),
+            staked_amount: to_decimal(&record.staked_amount),
+            lottery_power: record.lottery_power,
         }
-    }
-
-    /// It returns the address unique to the account.
-    pub fn get_address(&self) -> &str {
-        &self.address
-    }
-
-    /// It returns the available amount of the account.
-    pub fn get_available(&self) -> &Decimal {
-        &self.available_amount
-    }
-
-    /// It returns the staked amount of the account.
-    pub fn get_staked(&self) -> &Decimal {
-        &self.staked_amount
-    }
-
-    /// It updates the available and staked amount of the account.
-    pub fn set_amount(&mut self, available: Decimal, staked_amount: Decimal) {
-        self.available_amount = available;
-        self.staked_amount = staked_amount;
-    }
-
-    /// It returns the lottery power of the account.
-    pub fn get_lottery_power(&self) -> f64 {
-        self.lottery_power
-    }
-
-    /// It updates the lottery power of the account.
-    pub fn set_lottery_power(&mut self, power: f64) {
-        self.lottery_power = power;
     }
 }
 
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
 pub struct Pair(String, String);
-
-impl From<(&str, &str)> for Pair {
-    fn from((base, quote): (&str, &str)) -> Self {
-        Self(base.to_string(), quote.to_string())
-    }
-}
 
 impl Pair {
     pub fn base(&self) -> &str {
@@ -70,6 +37,12 @@ impl Pair {
 
     pub fn quote(&self) -> &str {
         &self.1
+    }
+}
+
+impl From<(&str, &str)> for Pair {
+    fn from((base, quote): (&str, &str)) -> Self {
+        Self(base.to_string(), quote.to_string())
     }
 }
 
@@ -131,4 +104,10 @@ impl From<BlockRecord> for Block {
             baker: record.baker,
         }
     }
+}
+
+/// It takes a string of a numeric value and tries to convert it into a decimal
+/// instance, otherwise it returns zero.
+fn to_decimal(value: &str) -> Decimal {
+    Decimal::from_str_exact(value).unwrap_or(Decimal::ZERO)
 }

@@ -2,16 +2,16 @@ pub mod account;
 pub mod block;
 pub mod price;
 
+use crate::model::{Pair, Price};
+use account::AccountRepository;
 use axum::http::StatusCode;
+use block::BlockRepository;
 use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::path::Path;
 use std::sync::Arc;
-
-use crate::model::{Account, Pair, Price};
-use crate::repository::block::BlockRepository;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -94,16 +94,6 @@ impl AsyncPool {
             stmt(conn).map_err(StorageError::from)
         })
     }
-}
-
-#[async_trait]
-pub trait AccountRepository {
-    /// It returns the account associated to the address if it exists.
-    async fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
-
-    /// It creates or updates an existing account using the address as the
-    /// identifier.
-    async fn set_account(&self, account: &Account) -> Result<(), StorageError>;
 }
 
 pub type DynAccountRepository = Arc<dyn AccountRepository + Send + Sync>;

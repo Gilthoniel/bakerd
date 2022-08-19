@@ -36,11 +36,11 @@ pub struct BlockInfo {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
-  pub tag: String,
-  pub account: Option<String>,
-  pub baker_reward: Option<Decimal>,
-  pub transaction_fees: Option<Decimal>,
-  pub finalization_reward: Option<Decimal>,
+    pub tag: String,
+    pub account: Option<String>,
+    pub baker_reward: Option<Decimal>,
+    pub transaction_fees: Option<Decimal>,
+    pub finalization_reward: Option<Decimal>,
 }
 
 #[derive(Deserialize, Debug)]

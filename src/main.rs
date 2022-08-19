@@ -117,7 +117,7 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
                     }
 
                     Box::new(job)
-                },
+                }
             },
         );
     }

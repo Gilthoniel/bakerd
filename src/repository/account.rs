@@ -1,13 +1,12 @@
 use diesel::prelude::*;
 
-use super::{AccountRepository, AsyncPool, StorageError};
+use super::{AsyncPool, StorageError};
 use crate::model::Account;
 use crate::schema::accounts::dsl::*;
 
-mod records {
-    use rust_decimal::Decimal;
+pub use records::NewAccount;
 
-    use crate::model;
+pub mod records {
     use crate::schema::accounts;
 
     /// Record of an account state on the blockchain.
@@ -20,20 +19,6 @@ mod records {
         pub lottery_power: f64,
     }
 
-    impl From<Account> for model::Account {
-        /// It creates an account from a record of the storage layer.
-        fn from(record: Account) -> Self {
-            let mut account = Self::new(&record.address);
-            account.set_lottery_power(record.lottery_power);
-            account.set_amount(
-                Decimal::from_str_exact(&record.available_amount).unwrap_or(Decimal::ZERO),
-                Decimal::from_str_exact(&record.staked_amount).unwrap_or(Decimal::ZERO),
-            );
-
-            account
-        }
-    }
-
     #[derive(Insertable, AsChangeset)]
     #[diesel(table_name = accounts)]
     pub struct NewAccount {
@@ -42,6 +27,16 @@ mod records {
         pub staked_amount: String,
         pub lottery_power: f64,
     }
+}
+
+#[async_trait]
+pub trait AccountRepository {
+    /// It returns the account associated to the address if it exists.
+    async fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
+
+    /// It creates or updates an existing account using the address as the
+    /// identifier.
+    async fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
 }
 
 /// Provide storage API to read and write accounts.
@@ -58,21 +53,14 @@ impl SqliteAccountRepository {
 
 #[async_trait]
 impl AccountRepository for SqliteAccountRepository {
-    async fn set_account(&self, account: &Account) -> Result<(), StorageError> {
-        let record = records::NewAccount {
-            address: account.get_address().into(),
-            available_amount: account.get_available().to_string(),
-            staked_amount: account.get_staked().to_string(),
-            lottery_power: account.get_lottery_power(),
-        };
-
+    async fn set_account(&self, account: NewAccount) -> Result<(), StorageError> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(accounts)
-                    .values(&record)
+                    .values(&account)
                     .on_conflict(address)
                     .do_update()
-                    .set(&record)
+                    .set(&account)
                     .execute(&mut conn)
             })
             .await?;
@@ -96,7 +84,7 @@ impl AccountRepository for SqliteAccountRepository {
 #[cfg(test)]
 mockall::mock! {
   pub AccountRepository {
-      pub fn set_account(&self, account: &Account) -> Result<(), StorageError>;
+      pub fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
 
       pub fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
   }
@@ -105,7 +93,7 @@ mockall::mock! {
 #[cfg(test)]
 #[async_trait]
 impl AccountRepository for MockAccountRepository {
-    async fn set_account(&self, account: &Account) -> Result<(), StorageError> {
+    async fn set_account(&self, account: NewAccount) -> Result<(), StorageError> {
         self.set_account(account)
     }
 
@@ -117,6 +105,7 @@ impl AccountRepository for MockAccountRepository {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    use crate::repository::account::records::Account as AccountRecord;
     use crate::repository::AsyncPool;
 
     #[tokio::test(flavor = "multi_thread")]
@@ -124,15 +113,29 @@ mod integration_tests {
         let pool = AsyncPool::new(":memory:");
         pool.run_migrations().await.unwrap();
 
-        let account = Account::new("some-address");
+        let expect = AccountRecord {
+            id: 1,
+            address: ":address:".into(),
+            available_amount: "250".into(),
+            staked_amount: "50".into(),
+            lottery_power: 0.096,
+        };
+
+        let account = NewAccount {
+            address: expect.address.clone(),
+            available_amount: expect.available_amount.clone(),
+            staked_amount: expect.staked_amount.clone(),
+            lottery_power: expect.lottery_power,
+        };
 
         let repo = SqliteAccountRepository::new(pool);
 
         // 1. Create an account.
-        assert!(matches!(repo.set_account(&account).await, Ok(_)),);
+        assert!(matches!(repo.set_account(account).await, Ok(_)),);
 
         // 2. Get the account.
-        let res = repo.get_account(account.get_address()).await.unwrap();
-        assert_eq!(account, res);
+        let res = repo.get_account(":address:").await.unwrap();
+
+        assert_eq!(Account::from(expect), res);
     }
 }

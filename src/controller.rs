@@ -76,6 +76,7 @@ pub async fn get_price(
 mod tests {
     use super::*;
     use crate::model::Pair;
+    use crate::repository::account::records::Account as AccountRecord;
     use crate::repository::account::MockAccountRepository;
     use crate::repository::price::MockPriceRepository;
     use axum::http::StatusCode;
@@ -105,19 +106,27 @@ mod tests {
     async fn test_get_account() {
         let mut repository = MockAccountRepository::default();
 
-        let addr = "some-address";
+        let account = Account::from(AccountRecord {
+            id: 1,
+            address: ":address:".into(),
+            available_amount: "125".into(),
+            staked_amount: "50".into(),
+            lottery_power: 0.06,
+        });
+
+        let expect = account.clone();
 
         repository
             .expect_get_account()
-            .with(eq(addr))
+            .with(eq(":address:"))
             .times(1)
-            .returning(|_| Ok(Account::new(addr)));
+            .return_once(move |_| Ok(account));
 
-        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository)))
+        let res = get_account(Path(":address:".into()), Extension(Arc::new(repository)))
             .await
             .unwrap();
 
-        assert_eq!(Account::new(addr), res.0)
+        assert_eq!(expect, res.0)
     }
 
     #[tokio::test]
