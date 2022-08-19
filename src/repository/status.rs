@@ -3,17 +3,18 @@ use crate::model::Status;
 use crate::schema::statuses::dsl::*;
 use diesel::prelude::*;
 
-pub use records::{NewStatus, ResourceStatusJson};
+pub use records::{NewStatus, NodeStatusJson, ResourceStatusJson};
 
 pub mod records {
     use crate::schema::statuses;
     use diesel::backend;
     use diesel::deserialize as de;
     use diesel::serialize as se;
-    use diesel::sql_types::Text;
+    use diesel::sql_types::{Nullable, Text};
     use diesel::sqlite::Sqlite;
     use serde::{Deserialize, Serialize};
 
+    /// A JSON blob of the resources of the server on which the node is running.
     #[derive(Serialize, Deserialize, AsExpression, FromSqlRow, Debug)]
     #[diesel(sql_type = Text)]
     pub struct ResourceStatusJson {
@@ -38,10 +39,40 @@ pub mod records {
         }
     }
 
+    /// A JSON blob of the node status.
+    #[derive(Serialize, Deserialize, AsExpression, FromSqlRow, Debug)]
+    #[diesel(sql_type = Nullable<Text>)]
+    pub struct NodeStatusJson {
+        pub node_id: Option<String>,
+        pub baker_id: Option<u64>,
+        pub is_baker_committee: bool,
+        pub is_finalizer_committee: bool,
+        pub uptime_ms: u64,
+        pub peer_type: String,
+        pub peer_average_latency: f64,
+        pub peer_count: usize,
+    }
+
+    impl se::ToSql<Nullable<Text>, Sqlite> for NodeStatusJson {
+        fn to_sql(&self, out: &mut se::Output<Sqlite>) -> se::Result {
+            let value = serde_json::to_string(&self)?;
+            out.set_value(value);
+            Ok(se::IsNull::No)
+        }
+    }
+
+    impl de::FromSql<Text, Sqlite> for NodeStatusJson {
+        fn from_sql(value: backend::RawValue<Sqlite>) -> de::Result<Self> {
+            let decoded = <String as de::FromSql<Text, Sqlite>>::from_sql(value)?;
+            Ok(serde_json::from_str(&decoded)?)
+        }
+    }
+
     #[derive(Queryable)]
     pub struct Status {
         pub id: i32,
         pub resources: ResourceStatusJson,
+        pub node: Option<NodeStatusJson>,
         pub timestamp_ms: i64,
     }
 
@@ -50,6 +81,7 @@ pub mod records {
     pub struct NewStatus {
         pub timestamp_ms: i64,
         pub resources: ResourceStatusJson,
+        pub node: Option<NodeStatusJson>,
     }
 }
 
@@ -95,6 +127,26 @@ impl StatusRepository for SqliteStatusRepository {
 }
 
 #[cfg(test)]
+mockall::mock! {
+    pub StatusRepository {
+        pub fn get_last_report(&self) -> Result<Status, StorageError>;
+        pub fn report(&self, status: NewStatus) -> Result<(), StorageError>;
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl StatusRepository for MockStatusRepository {
+    async fn get_last_report(&self) -> Result<Status, StorageError> {
+        self.get_last_report()
+    }
+
+    async fn report(&self, status: NewStatus) -> Result<(), StorageError> {
+        self.report(status)
+    }
+}
+
+#[cfg(test)]
 mod integration_tests {
     use super::*;
 
@@ -112,6 +164,16 @@ mod integration_tests {
                 mem_total: None,
                 uptime_secs: None,
             },
+            node: Some(NodeStatusJson {
+                node_id: Some("test".to_string()),
+                baker_id: Some(8343),
+                is_baker_committee: true,
+                is_finalizer_committee: true,
+                uptime_ms: 0,
+                peer_type: "peer".to_string(),
+                peer_average_latency: 0.0,
+                peer_count: 5,
+            }),
             timestamp_ms: 1000,
         };
 

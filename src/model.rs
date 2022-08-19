@@ -4,6 +4,7 @@ use crate::repository::account::records::{
 use crate::repository::block::records::Block as BlockRecord;
 use crate::repository::price::PriceRecord;
 use crate::repository::status::records::Status as StatusRecord;
+use crate::repository::status::{NodeStatusJson, ResourceStatusJson};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -167,17 +168,10 @@ impl From<BlockRecord> for Block {
 }
 
 #[derive(Serialize, Debug)]
-pub struct ResourceStatus {
-    avg_cpu_load: Option<f32>,
-    mem_free: Option<u64>,
-    mem_total: Option<u64>,
-    uptime_secs: Option<u64>,
-}
-
-#[derive(Serialize, Debug)]
 pub struct Status {
     id: i32,
-    resources: ResourceStatus,
+    resources: ResourceStatusJson,
+    node: Option<NodeStatusJson>,
     timestamp_ms: i64,
 }
 
@@ -185,12 +179,8 @@ impl From<StatusRecord> for Status {
     fn from(record: StatusRecord) -> Self {
         Self {
             id: record.id,
-            resources: ResourceStatus {
-                avg_cpu_load: record.resources.avg_cpu_load,
-                mem_free: record.resources.mem_free,
-                mem_total: record.resources.mem_total,
-                uptime_secs: record.resources.uptime_secs,
-            },
+            resources: record.resources,
+            node: record.node,
             timestamp_ms: record.timestamp_ms,
         }
     }

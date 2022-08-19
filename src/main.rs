@@ -124,6 +124,7 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
                 }
                 config::Job::StatusChecker => Box::new(job::status::StatusChecker::new(
                     ctx.status_repository.clone(),
+                    node_client.clone(),
                 )),
             },
         );

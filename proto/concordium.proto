@@ -66,6 +66,15 @@ message BlockHeight {
 }
 
 service P2P {
+  // Get information about the running node.
+  rpc NodeInfo(Empty) returns (NodeInfoResponse) {}
+
+  // Uptime of the *node* in milliseconds.
+  rpc PeerUptime(Empty) returns (NumberResponse) {}
+
+  // Stats for connected peers.
+  rpc PeerStats(PeersRequest) returns (PeerStatsResponse) {}
+  
   // Get information about the consensus.
   // A JSON schema for the return type is provided at: https://developer.concordium.software/en/mainnet/net/references/grpc.html.
   rpc GetConsensusStatus(Empty) returns (JsonResponse) {}

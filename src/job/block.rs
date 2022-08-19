@@ -117,7 +117,6 @@ impl AsyncJob for BlockFetcher {
         let current_block = self.block_repository.get_last_block().await?;
 
         let mut height = current_block.get_height() + 1;
-        //let mut height = 3697547;
 
         while height <= last_block.height {
             match self.client.get_block_at_height(height).await? {

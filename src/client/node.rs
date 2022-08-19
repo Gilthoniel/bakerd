@@ -1,4 +1,5 @@
 use super::{DynNodeClient, Result};
+use ccd::node_info_response::IsInBakingCommittee;
 use ccd::p2p_client::P2pClient;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -19,6 +20,23 @@ mod ccd {
 pub struct Block {
     pub hash: String,
     pub height: i64,
+}
+
+#[derive(Debug)]
+pub struct NodeInfo {
+    pub node_id: Option<String>,
+    pub baker_id: Option<u64>,
+    pub is_baker_committee: bool,
+    pub is_finalizer_committee: bool,
+    pub peer_type: String,
+}
+
+#[derive(Debug)]
+pub struct NodeStats {
+    pub avg_latency: f64,
+    pub avg_bps_in: u64,
+    pub avg_bps_out: u64,
+    pub peer_count: usize,
 }
 
 #[derive(Deserialize, Debug)]
@@ -90,6 +108,12 @@ struct ConsensusInfo {
 
 #[async_trait]
 pub trait NodeClient {
+    async fn get_node_info(&self) -> Result<NodeInfo>;
+
+    async fn get_node_uptime(&self) -> Result<u64>;
+
+    async fn get_node_stats(&self) -> Result<NodeStats>;
+
     async fn get_last_block(&self) -> Result<Block>;
 
     async fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
@@ -121,6 +145,52 @@ impl Client {
 
 #[async_trait]
 impl NodeClient for Client {
+    /// It returns the information about the status of the node.
+    async fn get_node_info(&self) -> Result<NodeInfo> {
+        let mut client = self.client.clone();
+
+        let request = Request::new(ccd::Empty {});
+
+        let response = client.node_info(request).await?.into_inner();
+
+        Ok(NodeInfo {
+            node_id: response.node_id,
+            baker_id: response.consensus_baker_id,
+            is_baker_committee: is_in_baker_committee(response.consensus_baker_committee),
+            is_finalizer_committee: response.consensus_finalizer_committee,
+            peer_type: response.peer_type,
+        })
+    }
+
+    /// It asks to the node for the uptime and the value in milliseconds.
+    async fn get_node_uptime(&self) -> Result<u64> {
+        let mut client = self.client.clone();
+
+        let request = Request::new(ccd::Empty {});
+
+        let response = client.peer_uptime(request).await?.into_inner();
+
+        Ok(response.value)
+    }
+
+    /// It returns the statistics of the blockchain node.
+    async fn get_node_stats(&self) -> Result<NodeStats> {
+        let mut client = self.client.clone();
+
+        let request = Request::new(ccd::PeersRequest {
+            include_bootstrappers: false,
+        });
+
+        let response = client.peer_stats(request).await?.into_inner();
+
+        Ok(NodeStats {
+            avg_latency: compute_avg_latency(&response),
+            avg_bps_in: response.avg_bps_in,
+            avg_bps_out: response.avg_bps_out,
+            peer_count: response.peerstats.len(),
+        })
+    }
+
     /// It fetches the current consensus status of the Concordium network of the
     /// node and returns the hash of the last finalized block.
     async fn get_last_block(&self) -> Result<Block> {
@@ -140,6 +210,8 @@ impl NodeClient for Client {
         Ok(block)
     }
 
+    /// It returns the hash of the block at the given height. It expects only
+    /// one hash per height but returns the first if multiple are found.
     async fn get_block_at_height(&self, height: i64) -> Result<Option<String>> {
         let mut client = self.client.clone();
 
@@ -156,6 +228,7 @@ impl NodeClient for Client {
         Ok(hashes.pop())
     }
 
+    /// It returns the information about the block with the given hash.
     async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo> {
         let mut client = self.client.clone();
 
@@ -168,6 +241,7 @@ impl NodeClient for Client {
         Ok(serde_json::from_str(&response.value)?)
     }
 
+    /// It returns the summary of the block like special events.
     async fn get_block_summary(&self, block_hash: &str) -> Result<BlockSummary> {
         let mut client = self.client.clone();
 
@@ -240,9 +314,28 @@ impl Interceptor for Authorization {
     }
 }
 
+fn is_in_baker_committee(value: i32) -> bool {
+    value == i32::from(IsInBakingCommittee::ActiveInCommittee)
+}
+
+fn compute_avg_latency(stats: &ccd::PeerStatsResponse) -> f64 {
+    let mut t = 0;
+
+    for stat in &stats.peerstats {
+        t += stat.latency;
+    }
+
+    let size = stats.peerstats.len() as f64;
+
+    t as f64 / size
+}
+
 #[cfg(test)]
 mockall::mock! {
     pub NodeClient {
+        pub fn get_node_info(&self) -> Result<NodeInfo>;
+        pub fn get_node_uptime(&self) -> Result<u64>;
+        pub fn get_node_stats(&self) -> Result<NodeStats>;
         pub fn get_last_block(&self) -> Result<Block>;
         pub fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
         pub fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
@@ -255,6 +348,18 @@ mockall::mock! {
 #[cfg(test)]
 #[async_trait]
 impl NodeClient for MockNodeClient {
+    async fn get_node_info(&self) -> Result<NodeInfo> {
+        self.get_node_info()
+    }
+
+    async fn get_node_uptime(&self) -> Result<u64> {
+        self.get_node_uptime()
+    }
+
+    async fn get_node_stats(&self) -> Result<NodeStats> {
+        self.get_node_stats()
+    }
+
     async fn get_last_block(&self) -> Result<Block> {
         self.get_last_block()
     }
@@ -288,9 +393,18 @@ mod integration_tests {
     use tonic::{Request, Response, Status};
 
     type JsonResponse = std::result::Result<Response<ccd::JsonResponse>, Status>;
+    type NumberResponse = std::result::Result<Response<ccd::NumberResponse>, Status>;
+    type NodeInfoResponse = std::result::Result<Response<ccd::NodeInfoResponse>, Status>;
+    type PeerStatsResponse = std::result::Result<Response<ccd::PeerStatsResponse>, Status>;
 
     mockall::mock! {
         pub Service {
+            fn node_info(&self, request: Request<ccd::Empty>) -> NodeInfoResponse;
+
+            fn peer_uptime(&self, request: Request<ccd::Empty>) -> NumberResponse;
+
+            fn peer_stats(&self, request: Request<ccd::PeersRequest>) -> PeerStatsResponse;
+
             fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse;
 
             fn get_blocks_at_height(&self, request: Request<ccd::BlockHeight>) -> JsonResponse;
@@ -307,6 +421,18 @@ mod integration_tests {
 
     #[tonic::async_trait]
     impl ccd::p2p_server::P2p for MockService {
+        async fn node_info(&self, request: Request<ccd::Empty>) -> NodeInfoResponse {
+            self.node_info(request)
+        }
+
+        async fn peer_uptime(&self, request: Request<ccd::Empty>) -> NumberResponse {
+            self.peer_uptime(request)
+        }
+
+        async fn peer_stats(&self, request: Request<ccd::PeersRequest>) -> PeerStatsResponse {
+            self.peer_stats(request)
+        }
+
         async fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse {
             self.get_consensus_status(request)
         }
@@ -357,8 +483,85 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn test_get_node_info() {
+        let mut service = MockService::new();
+
+        service
+            .expect_node_info()
+            .times(1)
+            .returning(|_| Ok(Response::new(ccd::NodeInfoResponse {
+                node_id: Some("deadbeef".to_string()),
+                current_localtime: 0,
+                peer_type: "Node".to_string(),
+                consensus_baker_running: true,
+                consensus_running: true,
+                consensus_type: "".to_string(),
+                consensus_baker_committee: 3,
+                consensus_finalizer_committee: true,
+                consensus_baker_id: Some(42),
+            })));
+
+        let client = init(service).await.unwrap();
+
+        let res = client.get_node_info().await;
+
+        assert!(matches!(res, Ok(_)));
+    }
+
+    #[tokio::test]
+    async fn test_get_node_uptime() {
+        let mut service = MockService::new();
+
+        service
+            .expect_peer_uptime()
+            .times(1)
+            .returning(|_| Ok(Response::new(ccd::NumberResponse{
+                value: 42,
+            })));
+
+        let client = init(service).await.unwrap();
+
+        let res = client.get_node_uptime().await;
+
+        assert!(matches!(res, Ok(uptime) if uptime == 42));
+    }
+
+    #[tokio::test]
+    async fn test_get_node_stats() {
+        let mut service = MockService::new();
+
+        service
+            .expect_peer_stats()
+            .times(1)
+            .returning(|_| Ok(Response::new(ccd::PeerStatsResponse {
+                avg_bps_in: 0,
+                avg_bps_out: 0,
+                peerstats: vec![
+                    ccd::peer_stats_response::PeerStats {
+                        node_id: "peer-1".to_string(),
+                        packets_sent: 0,
+                        packets_received: 0,
+                        latency: 200,
+                    },
+                    ccd::peer_stats_response::PeerStats {
+                        node_id: "peer-2".to_string(),
+                        packets_sent: 0,
+                        packets_received: 0,
+                        latency: 100,
+                    },
+                ],
+            })));
+
+        let client = init(service).await.unwrap();
+
+        let res = client.get_node_stats().await;
+
+        assert!(matches!(res, Ok(node_stats) if node_stats.avg_latency == 150.0));
+    }
+
+    #[tokio::test]
     async fn test_get_last_block() {
-        let mut service = MockService::default();
+        let mut service = MockService::new();
 
         service
             .expect_get_consensus_status()

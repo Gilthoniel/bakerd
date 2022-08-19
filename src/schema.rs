@@ -42,6 +42,7 @@ table! {
     statuses (id) {
         id -> Integer,
         resources -> Text,
+        node -> Nullable<Text>,
         timestamp_ms -> BigInt,
     }
 }
