@@ -6,7 +6,7 @@ use axum::{
 };
 
 use crate::client::Error as ClientError;
-use crate::model::{Account, Price};
+use crate::model::{Account, Price, Reward};
 use crate::repository::{DynAccountRepository, DynPriceRepository, StorageError};
 
 /// An global definition of errors for the application.
@@ -55,6 +55,17 @@ pub async fn get_account(
     let account = repo.get_account(&addr).await?;
 
     Ok(account.into())
+}
+
+pub async fn get_account_rewards(
+    Path(addr): Path<String>,
+    Extension(repository): Extension<DynAccountRepository>,
+) -> Result<Json<Vec<Reward>>, AppError> {
+    let account = repository.get_account(&addr).await?;
+
+    let rewards = repository.get_rewards(&account).await?;
+
+    Ok(rewards.into())
 }
 
 /// A controller to return the price of a pair. The pair is represented with

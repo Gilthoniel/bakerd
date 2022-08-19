@@ -1,4 +1,6 @@
-use crate::repository::account::records::{Account as AccountRecord, RewardKind};
+use crate::repository::account::records::{
+    Account as AccountRecord, Reward as RewardRecord, RewardKind as SqlRewardKind,
+};
 use crate::repository::block::records::Block as BlockRecord;
 use crate::repository::price::PriceRecord;
 use rust_decimal::Decimal;
@@ -32,6 +34,29 @@ impl From<AccountRecord> for Account {
     }
 }
 
+/// A enumeration of the reward kinds. It supports serialization into a human
+/// readable string.
+#[derive(Serialize, Debug)]
+pub enum RewardKind {
+    #[serde(rename = "kind_baker")]
+    Baker,
+
+    #[serde(rename = "kind_transaction_fee")]
+    TransactionFee,
+}
+
+impl From<SqlRewardKind> for RewardKind {
+    /// It converts an SQL reward kind into the model one.
+    fn from(kind: SqlRewardKind) -> Self {
+        match kind {
+            SqlRewardKind::Baker => Self::Baker,
+            SqlRewardKind::TransactionFee => Self::TransactionFee,
+        }
+    }
+}
+
+// A reward of a baker.
+#[derive(Serialize, Debug)]
 pub struct Reward {
     id: i32,
     account_id: i32,
@@ -39,6 +64,19 @@ pub struct Reward {
     amount: Decimal,
     epoch_ms: i64,
     kind: RewardKind,
+}
+
+impl From<RewardRecord> for Reward {
+    fn from(record: RewardRecord) -> Self {
+        Self {
+            id: record.id,
+            account_id: record.account_id,
+            block_hash: record.block_hash,
+            amount: to_decimal(&record.amount),
+            epoch_ms: record.epoch_ms,
+            kind: RewardKind::from(record.kind),
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]

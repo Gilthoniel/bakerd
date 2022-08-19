@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 
 use super::{AsyncPool, StorageError};
-use crate::model::Account;
+use crate::model::{Account, Reward};
 use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
 
@@ -45,7 +45,7 @@ pub mod records {
         pub block_hash: String,
         pub amount: String,
         pub epoch_ms: i64,
-        pub kind: String,
+        pub kind: RewardKind,
     }
 
     // A enumeration of the possible reward kinds.
@@ -70,7 +70,8 @@ pub mod records {
     impl deserialize::FromSql<Text, Sqlite> for RewardKind {
         fn from_sql(value: backend::RawValue<Sqlite>) -> deserialize::Result<Self> {
             match <String as deserialize::FromSql<Text, Sqlite>>::from_sql(value)?.as_str() {
-                "kind_baker" => Ok(RewardKind::Baker),
+                REWARD_KIND_BAKER => Ok(RewardKind::Baker),
+                REWARD_KIND_TRANSACTION_FEE => Ok(RewardKind::TransactionFee),
                 x => Err(format!("unrecognized value for enum: {}", x).into()),
             }
         }
@@ -96,6 +97,10 @@ pub trait AccountRepository {
     /// identifier.
     async fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
 
+    /// It returns the list of rewards known for an account using the address to
+    /// identity it.
+    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError>;
+
     /// It creates an account reward if it does not exist already. The reward is
     /// identified by the account, the block and its kind.
     async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError>;
@@ -115,6 +120,18 @@ impl SqliteAccountRepository {
 
 #[async_trait]
 impl AccountRepository for SqliteAccountRepository {
+    /// It returns the account with the given address if it exists.
+    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
+        let addr = addr.to_string();
+
+        let record: records::Account = self
+            .pool
+            .exec(|mut conn| accounts.filter(address.eq(addr)).first(&mut conn))
+            .await?;
+
+        Ok(Account::from(record))
+    }
+
     async fn set_account(&self, account: NewAccount) -> Result<(), StorageError> {
         self.pool
             .exec(move |mut conn| {
@@ -130,16 +147,19 @@ impl AccountRepository for SqliteAccountRepository {
         Ok(())
     }
 
-    /// It returns the account with the given address if it exists.
-    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
-        let addr = addr.to_string();
+    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError> {
+        let account_id = account.get_id();
 
-        let record: records::Account = self
+        let res: Vec<records::Reward> = self
             .pool
-            .exec(|mut conn| accounts.filter(address.eq(addr)).first(&mut conn))
+            .exec(move |mut conn| {
+                reward_dsl::account_rewards
+                    .filter(reward_dsl::account_id.eq(account_id))
+                    .load(&mut conn)
+            })
             .await?;
 
-        Ok(Account::from(record))
+        Ok(res.into_iter().map(Reward::from).collect())
     }
 
     async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError> {
@@ -163,24 +183,27 @@ impl AccountRepository for SqliteAccountRepository {
 
 #[cfg(test)]
 mockall::mock! {
-  pub AccountRepository {
-      pub fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
-
-      pub fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
-
-      pub fn set_reward(&self, reward: NewReward) -> Result<(), StorageError>;
-  }
+    pub AccountRepository {
+        pub fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
+        pub fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
+        pub fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError>;
+        pub fn set_reward(&self, reward: NewReward) -> Result<(), StorageError>;
+    }
 }
 
 #[cfg(test)]
 #[async_trait]
 impl AccountRepository for MockAccountRepository {
+    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
+        self.get_account(addr)
+    }
+
     async fn set_account(&self, account: NewAccount) -> Result<(), StorageError> {
         self.set_account(account)
     }
 
-    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
-        self.get_account(addr)
+    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError> {
+        self.get_rewards(account)
     }
 
     async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError> {
