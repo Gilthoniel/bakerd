@@ -1,7 +1,6 @@
 use super::{AsyncPool, StorageError};
 use crate::model::Block;
 use crate::schema::blocks::dsl::*;
-use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 
 pub use records::NewBlock;
@@ -35,7 +34,8 @@ pub trait BlockRepository {
 
     async fn store(&self, block: NewBlock) -> Result<(), StorageError>;
 
-    async fn garbage_collect(&self, before: DateTime<Utc>) -> Result<(), StorageError>;
+    /// It deletes the block with a height below the given value.
+    async fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError>;
 }
 
 /// A repository supported by SQLite to store the blocks observed by the
@@ -74,13 +74,11 @@ impl BlockRepository for SqliteBlockRepository {
         Ok(())
     }
 
-    async fn garbage_collect(&self, before: DateTime<Utc>) -> Result<(), StorageError> {
-        let before_ms = before.timestamp_millis();
-
+    async fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError> {
         self.pool
             .exec(move |mut conn| {
                 diesel::delete(blocks)
-                    .filter(slot_time_ms.le(before_ms))
+                    .filter(height.lt(below_height))
                     .execute(&mut conn)
             })
             .await?;
@@ -94,7 +92,7 @@ mockall::mock! {
     pub BlockRepository {
         pub fn get_last_block(&self) -> Result<Block, StorageError>;
         pub fn store(&self, block: NewBlock) -> Result<(), StorageError>;
-        pub fn garbage_collect(&self, before: DateTime<Utc>) -> Result<(), StorageError>;
+        pub fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError>;
     }
 }
 
@@ -109,8 +107,8 @@ impl BlockRepository for MockBlockRepository {
         self.store(block)
     }
 
-    async fn garbage_collect(&self, before: DateTime<Utc>) -> Result<(), StorageError> {
-        self.garbage_collect(before)
+    async fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError> {
+        self.garbage_collect(below_height)
     }
 }
 
@@ -118,7 +116,6 @@ impl BlockRepository for MockBlockRepository {
 mod integration_tests {
     use super::*;
     use crate::repository::AsyncPool;
-    use chrono::TimeZone;
     use diesel::result::Error;
 
     #[tokio::test(flavor = "multi_thread")]
@@ -150,9 +147,7 @@ mod integration_tests {
 
         let repository = SqliteBlockRepository::new(pool);
 
-        let before = Utc.timestamp_millis(1651978740000);
-
-        assert!(matches!(repository.garbage_collect(before).await, Ok(_)));
+        assert!(matches!(repository.garbage_collect(2840312).await, Ok(_)));
 
         assert!(matches!(
             repository.get_last_block().await,

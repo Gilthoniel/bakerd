@@ -10,6 +10,8 @@ use std::collections::HashSet;
 
 const EVENT_TAG_REWARD: &str = "PaydayAccountReward";
 
+const GC_OFFSET: i64 = 10_000;
+
 pub struct BlockFetcher {
     client: DynNodeClient,
     block_repository: DynBlockRepository,
@@ -31,10 +33,14 @@ impl BlockFetcher {
         }
     }
 
+    /// It adds an address of an account to be updated according to the latest
+    /// data on the blockchain.
     pub fn follow_account(&mut self, address: &str) {
         self.accounts.insert(address.into());
     }
 
+    /// It processes a block by fetching the data about it and analyzes it to
+    /// found relevant events.
     async fn do_block(&self, block_hash: &str) -> Result<(), AppError> {
         let info = self.client.get_block_info(block_hash).await?;
 
@@ -58,6 +64,8 @@ impl BlockFetcher {
         Ok(())
     }
 
+    /// It fetches the special events of a block and tries to find rewards for
+    /// the followed accounts.
     async fn do_rewards(&self, block_info: &BlockInfo) -> Result<(), AppError> {
         let summary = self
             .client
@@ -110,8 +118,8 @@ impl BlockFetcher {
 #[async_trait]
 impl AsyncJob for BlockFetcher {
     async fn execute(&self) -> Result<(), AppError> {
-        // 1. The last block of the consensus is fetched once to learn about
-        //    which blocks need to be caught up.
+        // The last block of the consensus is fetched once to learn about which
+        // blocks need to be caught up.
         let last_block = self.client.get_last_block().await?;
 
         let current_block = self.block_repository.get_last_block().await?;
@@ -123,12 +131,15 @@ impl AsyncJob for BlockFetcher {
                 Some(block_hash) => self.do_block(&block_hash).await?,
                 None => {
                     warn!("unable to find a proper hash for height {}", height);
-                    return Ok(());
+                    break;
                 }
             }
 
             height += 1;
         }
+
+        // Truncate the block table to avoid filling up the space.
+        self.block_repository.garbage_collect(height - GC_OFFSET).await?;
 
         Ok(())
     }
@@ -152,6 +163,7 @@ mod tests {
     use chrono::Utc;
     use rust_decimal_macros::dec;
     use std::sync::Arc;
+    use mockall::predicate::*;
 
     #[tokio::test]
     async fn test_execute() {
@@ -211,6 +223,12 @@ mod tests {
 
         block_repository
             .expect_store()
+            .times(1)
+            .returning(|_| Ok(()));
+
+        block_repository
+            .expect_garbage_collect()
+            .with(eq(102i64 - GC_OFFSET))
             .times(1)
             .returning(|_| Ok(()));
 

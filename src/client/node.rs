@@ -486,10 +486,8 @@ mod integration_tests {
     async fn test_get_node_info() {
         let mut service = MockService::new();
 
-        service
-            .expect_node_info()
-            .times(1)
-            .returning(|_| Ok(Response::new(ccd::NodeInfoResponse {
+        service.expect_node_info().times(1).returning(|_| {
+            Ok(Response::new(ccd::NodeInfoResponse {
                 node_id: Some("deadbeef".to_string()),
                 current_localtime: 0,
                 peer_type: "Node".to_string(),
@@ -499,7 +497,8 @@ mod integration_tests {
                 consensus_baker_committee: 3,
                 consensus_finalizer_committee: true,
                 consensus_baker_id: Some(42),
-            })));
+            }))
+        });
 
         let client = init(service).await.unwrap();
 
@@ -515,9 +514,7 @@ mod integration_tests {
         service
             .expect_peer_uptime()
             .times(1)
-            .returning(|_| Ok(Response::new(ccd::NumberResponse{
-                value: 42,
-            })));
+            .returning(|_| Ok(Response::new(ccd::NumberResponse { value: 42 })));
 
         let client = init(service).await.unwrap();
 
@@ -530,10 +527,8 @@ mod integration_tests {
     async fn test_get_node_stats() {
         let mut service = MockService::new();
 
-        service
-            .expect_peer_stats()
-            .times(1)
-            .returning(|_| Ok(Response::new(ccd::PeerStatsResponse {
+        service.expect_peer_stats().times(1).returning(|_| {
+            Ok(Response::new(ccd::PeerStatsResponse {
                 avg_bps_in: 0,
                 avg_bps_out: 0,
                 peerstats: vec![
@@ -550,7 +545,8 @@ mod integration_tests {
                         latency: 100,
                     },
                 ],
-            })));
+            }))
+        });
 
         let client = init(service).await.unwrap();
 

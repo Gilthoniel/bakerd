@@ -115,39 +115,37 @@ impl AsyncJob for StatusChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::node::{MockNodeClient, NodeInfo, NodeStats};
     use crate::repository::status::MockStatusRepository;
-    use crate::client::node::{NodeInfo, NodeStats, MockNodeClient};
     use std::sync::Arc;
 
     #[tokio::test]
     async fn test_execute() {
         let mut client = MockNodeClient::new();
 
-        client
-            .expect_get_node_info()
-            .times(1)
-            .returning(|| Ok(NodeInfo {
+        client.expect_get_node_info().times(1).returning(|| {
+            Ok(NodeInfo {
                 node_id: None,
                 baker_id: None,
                 is_baker_committee: true,
                 is_finalizer_committee: false,
                 peer_type: "Node".to_string(),
-            }));
+            })
+        });
 
         client
             .expect_get_node_uptime()
             .times(1)
             .returning(|| Ok(250));
 
-        client
-            .expect_get_node_stats()
-            .times(1)
-            .returning(|| Ok(NodeStats {
+        client.expect_get_node_stats().times(1).returning(|| {
+            Ok(NodeStats {
                 avg_latency: 125.75,
                 avg_bps_in: 0,
                 avg_bps_out: 0,
                 peer_count: 6,
-            }));
+            })
+        });
 
         let mut repository = MockStatusRepository::new();
 
