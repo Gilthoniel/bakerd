@@ -2,12 +2,22 @@ use diesel::prelude::*;
 
 use super::{AsyncPool, StorageError};
 use crate::model::Account;
+use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
 
-pub use records::NewAccount;
+pub use records::{NewAccount, NewReward, RewardKind};
 
 pub mod records {
+    use crate::schema::account_rewards;
     use crate::schema::accounts;
+    use diesel::backend;
+    use diesel::deserialize;
+    use diesel::serialize;
+    use diesel::sql_types::Text;
+    use diesel::sqlite::Sqlite;
+
+    const REWARD_KIND_BAKER: &str = "kind_baker";
+    const REWARD_KIND_TRANSACTION_FEE: &str = "kind_transaction_fee";
 
     /// Record of an account state on the blockchain.
     #[derive(Queryable)]
@@ -27,6 +37,54 @@ pub mod records {
         pub staked_amount: String,
         pub lottery_power: f64,
     }
+
+    #[derive(Queryable)]
+    pub struct Reward {
+        pub id: i32,
+        pub account_id: i32,
+        pub block_hash: String,
+        pub amount: String,
+        pub epoch_ms: i64,
+        pub kind: String,
+    }
+
+    // A enumeration of the possible reward kinds.
+    #[derive(AsExpression, FromSqlRow, Debug)]
+    #[diesel(sql_type = Text)]
+    pub enum RewardKind {
+        Baker,
+        TransactionFee,
+    }
+
+    impl serialize::ToSql<Text, Sqlite> for RewardKind {
+        fn to_sql(&self, out: &mut serialize::Output<Sqlite>) -> serialize::Result {
+            let e = match self {
+                Self::Baker => REWARD_KIND_BAKER,
+                Self::TransactionFee => REWARD_KIND_TRANSACTION_FEE,
+            };
+
+            <str as serialize::ToSql<Text, Sqlite>>::to_sql(e, out)
+        }
+    }
+
+    impl deserialize::FromSql<Text, Sqlite> for RewardKind {
+        fn from_sql(value: backend::RawValue<Sqlite>) -> deserialize::Result<Self> {
+            match <String as deserialize::FromSql<Text, Sqlite>>::from_sql(value)?.as_str() {
+                "kind_baker" => Ok(RewardKind::Baker),
+                x => Err(format!("unrecognized value for enum: {}", x).into()),
+            }
+        }
+    }
+
+    #[derive(Insertable, AsChangeset)]
+    #[diesel(table_name = account_rewards)]
+    pub struct NewReward {
+        pub account_id: i32,
+        pub block_hash: String,
+        pub amount: String,
+        pub epoch_ms: i64,
+        pub kind: RewardKind,
+    }
 }
 
 #[async_trait]
@@ -37,6 +95,10 @@ pub trait AccountRepository {
     /// It creates or updates an existing account using the address as the
     /// identifier.
     async fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
+
+    /// It creates an account reward if it does not exist already. The reward is
+    /// identified by the account, the block and its kind.
+    async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError>;
 }
 
 /// Provide storage API to read and write accounts.
@@ -79,6 +141,24 @@ impl AccountRepository for SqliteAccountRepository {
 
         Ok(Account::from(record))
     }
+
+    async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError> {
+        self.pool
+            .exec(move |mut conn| {
+                diesel::insert_into(reward_dsl::account_rewards)
+                    .values(&reward)
+                    .on_conflict((
+                        reward_dsl::account_id,
+                        reward_dsl::block_hash,
+                        reward_dsl::kind,
+                    ))
+                    .do_nothing()
+                    .execute(&mut conn)
+            })
+            .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -87,6 +167,8 @@ mockall::mock! {
       pub fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
 
       pub fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
+
+      pub fn set_reward(&self, reward: NewReward) -> Result<(), StorageError>;
   }
 }
 
@@ -99,6 +181,10 @@ impl AccountRepository for MockAccountRepository {
 
     async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
         self.get_account(addr)
+    }
+
+    async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError> {
+        self.set_reward(reward)
     }
 }
 

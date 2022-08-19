@@ -1,9 +1,8 @@
-use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
-
-use crate::repository::account::records::Account as AccountRecord;
+use crate::repository::account::records::{Account as AccountRecord, RewardKind};
 use crate::repository::block::records::Block as BlockRecord;
 use crate::repository::price::PriceRecord;
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Clone, Debug, Serialize)]
 pub struct Account {
@@ -12,6 +11,12 @@ pub struct Account {
     available_amount: Decimal,
     staked_amount: Decimal,
     lottery_power: f64,
+}
+
+impl Account {
+    pub fn get_id(&self) -> i32 {
+        return self.id;
+    }
 }
 
 impl From<AccountRecord> for Account {
@@ -25,6 +30,15 @@ impl From<AccountRecord> for Account {
             lottery_power: record.lottery_power,
         }
     }
+}
+
+pub struct Reward {
+    id: i32,
+    account_id: i32,
+    block_hash: String,
+    amount: Decimal,
+    epoch_ms: i64,
+    kind: RewardKind,
 }
 
 #[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
