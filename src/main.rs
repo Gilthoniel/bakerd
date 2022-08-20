@@ -28,6 +28,7 @@ mod client;
 mod config;
 mod controller;
 mod job;
+mod middleware;
 mod model;
 mod repository;
 mod schema;
@@ -144,7 +145,11 @@ async fn prepare_context() -> Result<Context, AppError> {
 }
 
 /// It creates an application and registers the different routes.
-async fn create_app(ctx: &Context) -> Router {
+async fn create_app(ctx: &Context, cfg: &Config) -> Router {
+    // as a better security, the secret is only cloned once and shared between
+    // the requests.
+    let secret = Arc::new(cfg.get_secret().clone());
+
     Router::new()
         .route("/", get(controller::status))
         .route("/accounts/:addr", get(controller::get_account))
@@ -157,6 +162,9 @@ async fn create_app(ctx: &Context) -> Router {
         .layer(Extension(ctx.price_repository.clone()))
         .layer(Extension(ctx.block_repository.clone()))
         .layer(Extension(ctx.status_repository.clone()))
+        .layer(axum::middleware::from_fn(move |req, next| {
+            middleware::authentication(req, next, secret.clone())
+        }))
 }
 
 /// It schedules the different jobs from the configuration and start the server.
@@ -170,7 +178,7 @@ async fn run_server(
     let jobber = prepare_jobs(cfg, &ctx).await;
 
     axum::Server::bind(cfg.get_listen_addr())
-        .serve(create_app(&ctx).await.into_make_service())
+        .serve(create_app(&ctx, &cfg).await.into_make_service())
         .with_graceful_shutdown(termination)
         .await
         .unwrap();
@@ -205,6 +213,7 @@ mod integration_tests {
     async fn test_prepare_jobs() {
         let values = concat!(
             "listen_address: 127.0.0.1:8080\n",
+            "secret: \"abc\"\n",
             "jobs:\n",
             "  accounts_refresher: \"* * * * * * 1970\"\n",
             "  price_refresher: \"* * * * * * 1970\"\n",
@@ -233,12 +242,13 @@ mod integration_tests {
     async fn test_get_account() {
         let ctx = prepare_context().await.unwrap();
 
-        let app = create_app(&ctx).await;
+        let app = create_app(&ctx, &Config::default()).await;
 
         let response = app
             .oneshot(
                 Request::builder()
                     .uri("/accounts/:address:")
+                    .header("Authorization", "Bearer secret")
                     .body(Body::empty())
                     .unwrap(),
             )

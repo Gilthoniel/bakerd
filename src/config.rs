@@ -28,6 +28,7 @@ impl Job {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     listen_address: SocketAddr,
+    secret: String,
     jobs: Option<HashMap<Job, String>>,
     pairs: Option<Vec<Pair>>,
     accounts: Option<Vec<String>>,
@@ -41,6 +42,10 @@ impl Config {
 
     pub fn get_listen_addr(&self) -> &SocketAddr {
         &self.listen_address
+    }
+
+    pub fn get_secret(&self) -> &String {
+        &self.secret
     }
 
     pub fn get_jobs(&self) -> Option<&HashMap<Job, String>> {
@@ -60,6 +65,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
+            secret: "secret".to_string(),
             jobs: None,
             pairs: None,
             accounts: None,

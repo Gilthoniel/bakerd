@@ -139,7 +139,9 @@ impl AsyncJob for BlockFetcher {
         }
 
         // Truncate the block table to avoid filling up the space.
-        self.block_repository.garbage_collect(height - GC_OFFSET).await?;
+        self.block_repository
+            .garbage_collect(height - GC_OFFSET)
+            .await?;
 
         Ok(())
     }
@@ -161,9 +163,9 @@ mod tests {
     use crate::repository::block::records::Block as BlockRecord;
     use crate::repository::block::MockBlockRepository;
     use chrono::Utc;
+    use mockall::predicate::*;
     use rust_decimal_macros::dec;
     use std::sync::Arc;
-    use mockall::predicate::*;
 
     #[tokio::test]
     async fn test_execute() {
