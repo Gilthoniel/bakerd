@@ -10,24 +10,8 @@ use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::path::Path;
 
-pub use account::{AccountRepository, DynAccountRepository, SqliteAccountRepository};
-pub use block::{BlockRepository, DynBlockRepository, SqliteBlockRepository};
-pub use price::{DynPriceRepository, PriceRepository, SqlitePriceRepository};
-pub use status::{DynStatusRepository, SqliteStatusRepository, StatusRepository};
+pub use self::{account::*, block::*, price::*, status::*};
 
-#[cfg(test)]
-pub use account::MockAccountRepository;
-
-#[cfg(test)]
-pub use block::MockBlockRepository;
-
-#[cfg(test)]
-pub use price::MockPriceRepository;
-
-#[cfg(test)]
-pub use status::MockStatusRepository;
-
-/// Re-import of the records of the different repository.
 pub mod models {
     pub use super::account::models::*;
     pub use super::block::models::*;
@@ -42,6 +26,7 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 /// An alias of the pooled connection from the r2d2 crate for SQLite.
 type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 
+/// A result of an exeuction of a repository function.
 pub type Result<T> = std::result::Result<T, RepositoryError>;
 
 /// A generic error for the implementations of the different repositories.

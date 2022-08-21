@@ -106,6 +106,7 @@ struct ConsensusInfo {
     last_finalized_block_height: i64,
 }
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait NodeClient {
     async fn get_node_info(&self) -> Result<NodeInfo>;
@@ -328,61 +329,6 @@ fn compute_avg_latency(stats: &ccd::PeerStatsResponse) -> f64 {
     let size = stats.peerstats.len() as f64;
 
     t as f64 / size
-}
-
-#[cfg(test)]
-mockall::mock! {
-    pub NodeClient {
-        pub fn get_node_info(&self) -> Result<NodeInfo>;
-        pub fn get_node_uptime(&self) -> Result<u64>;
-        pub fn get_node_stats(&self) -> Result<NodeStats>;
-        pub fn get_last_block(&self) -> Result<Block>;
-        pub fn get_block_at_height(&self, height: i64) -> Result<Option<String>>;
-        pub fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo>;
-        pub fn get_block_summary(&self, block_hash: &str) -> Result<BlockSummary>;
-        pub fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo>;
-        pub fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>>;
-    }
-}
-
-#[cfg(test)]
-#[async_trait]
-impl NodeClient for MockNodeClient {
-    async fn get_node_info(&self) -> Result<NodeInfo> {
-        self.get_node_info()
-    }
-
-    async fn get_node_uptime(&self) -> Result<u64> {
-        self.get_node_uptime()
-    }
-
-    async fn get_node_stats(&self) -> Result<NodeStats> {
-        self.get_node_stats()
-    }
-
-    async fn get_last_block(&self) -> Result<Block> {
-        self.get_last_block()
-    }
-
-    async fn get_block_at_height(&self, height: i64) -> Result<Option<String>> {
-        self.get_block_at_height(height)
-    }
-
-    async fn get_block_info(&self, block_hash: &str) -> Result<BlockInfo> {
-        self.get_block_info(block_hash)
-    }
-
-    async fn get_block_summary(&self, block_hash: &str) -> Result<BlockSummary> {
-        self.get_block_summary(block_hash)
-    }
-
-    async fn get_account_info(&self, block: &str, address: &str) -> Result<AccountInfo> {
-        self.get_account_info(block, address)
-    }
-
-    async fn get_baker(&self, block: &str, address: &str) -> Result<Option<Baker>> {
-        self.get_baker(block, address)
-    }
 }
 
 #[cfg(test)]

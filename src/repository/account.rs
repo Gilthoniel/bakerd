@@ -93,6 +93,7 @@ pub mod models {
     }
 }
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait AccountRepository {
     /// It returns the account associated to the address if it exists.
@@ -184,36 +185,6 @@ impl AccountRepository for SqliteAccountRepository {
             .await?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mockall::mock! {
-    pub AccountRepository {
-        pub fn get_account(&self, addr: &str) -> Result<Account>;
-        pub fn set_account(&self, account: models::NewAccount) -> Result<()>;
-        pub fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>>;
-        pub fn set_reward(&self, reward: models::NewReward) -> Result<()>;
-    }
-}
-
-#[cfg(test)]
-#[async_trait]
-impl AccountRepository for MockAccountRepository {
-    async fn get_account(&self, addr: &str) -> Result<Account> {
-        self.get_account(addr)
-    }
-
-    async fn set_account(&self, account: models::NewAccount) -> Result<()> {
-        self.set_account(account)
-    }
-
-    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>> {
-        self.get_rewards(account)
-    }
-
-    async fn set_reward(&self, reward: models::NewReward) -> Result<()> {
-        self.set_reward(reward)
     }
 }
 

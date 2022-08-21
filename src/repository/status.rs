@@ -84,6 +84,7 @@ pub mod models {
     }
 }
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait StatusRepository {
     async fn get_last_report(&self) -> Result<Status>;
@@ -147,31 +148,6 @@ impl StatusRepository for SqliteStatusRepository {
             .await?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mockall::mock! {
-    pub StatusRepository {
-        pub fn get_last_report(&self) -> Result<Status>;
-        pub fn report(&self, status: models::NewStatus) -> Result<()>;
-        pub fn garbage_collect(&self, after_nth: i64) -> Result<()>;
-    }
-}
-
-#[cfg(test)]
-#[async_trait]
-impl StatusRepository for MockStatusRepository {
-    async fn get_last_report(&self) -> Result<Status> {
-        self.get_last_report()
-    }
-
-    async fn report(&self, status: models::NewStatus) -> Result<()> {
-        self.report(status)
-    }
-
-    async fn garbage_collect(&self, after_nth: i64) -> Result<()> {
-        self.garbage_collect(after_nth)
     }
 }
 

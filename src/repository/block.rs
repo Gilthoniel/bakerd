@@ -27,6 +27,7 @@ pub mod models {
 }
 
 /// A repository to store the blocks observed by the application.
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait BlockRepository {
     async fn get_last_block(&self) -> Result<Block>;
@@ -85,31 +86,6 @@ impl BlockRepository for SqliteBlockRepository {
             .await?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mockall::mock! {
-    pub BlockRepository {
-        pub fn get_last_block(&self) -> Result<Block>;
-        pub fn store(&self, block: models::NewBlock) -> Result<()>;
-        pub fn garbage_collect(&self, below_height: i64) -> Result<()>;
-    }
-}
-
-#[cfg(test)]
-#[async_trait]
-impl BlockRepository for MockBlockRepository {
-    async fn get_last_block(&self) -> Result<Block> {
-        self.get_last_block()
-    }
-
-    async fn store(&self, block: models::NewBlock) -> Result<()> {
-        self.store(block)
-    }
-
-    async fn garbage_collect(&self, below_height: i64) -> Result<()> {
-        self.garbage_collect(below_height)
     }
 }
 

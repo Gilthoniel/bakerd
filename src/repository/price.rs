@@ -19,6 +19,7 @@ pub mod models {
 }
 
 /// A repository to set and get prices of pairs.
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait PriceRepository {
     /// It takes a pair and return the price if found in the storage.
@@ -67,27 +68,6 @@ impl PriceRepository for SqlitePriceRepository {
             .await?;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mockall::mock! {
-    pub PriceRepository {
-        pub fn get_price(&self, pair: &Pair) -> Result<Price>;
-
-        pub fn set_price(&self, price: models::Price) -> Result<()>;
-    }
-}
-
-#[cfg(test)]
-#[async_trait]
-impl PriceRepository for MockPriceRepository {
-    async fn get_price(&self, pair: &Pair) -> Result<Price> {
-        self.get_price(pair)
-    }
-
-    async fn set_price(&self, price: models::Price) -> Result<()> {
-        self.set_price(price)
     }
 }
 
