@@ -92,8 +92,8 @@ pub async fn get_price(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Pair;
-    use crate::repository::{models, MockAccountRepository, MockPriceRepository};
+    use crate::model::{Pair, Status as StatusView};
+    use crate::repository::{models, MockAccountRepository, MockPriceRepository, MockStatusRepository};
     use axum::http::StatusCode;
     use diesel::result::Error as DriverError;
     use mockall::predicate::*;
@@ -118,8 +118,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_status() {
+        let mut repository = MockStatusRepository::new();
+
+        repository
+            .expect_get_last_report()
+            .times(1)
+            .returning(|| Ok(StatusView::from(models::Status {
+                id: 1,
+                resources: models::ResourceStatusJson {
+                    avg_cpu_load: Some(0.5),
+                    mem_free: Some(256),
+                    mem_total: Some(512),
+                    uptime_secs: Some(16),
+                },
+                node: None,
+                timestamp_ms: 0,
+            })));
+
+        let res = status(Extension(Arc::new(repository))).await;
+
+        assert!(matches!(res, Ok(_)));
+    }
+
+    #[tokio::test]
     async fn test_get_account() {
-        let mut repository = MockAccountRepository::default();
+        let mut repository = MockAccountRepository::new();
 
         let account = Account::from(models::Account {
             id: 1,

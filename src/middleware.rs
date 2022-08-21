@@ -26,3 +26,49 @@ pub async fn authentication<B>(
 fn token_is_valid(token: &str, secret: &str) -> bool {
     token.strip_prefix("Bearer ") == Some(secret)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, http::StatusCode, middleware, routing::get, Router};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_authentication_ok() {
+        let secret = Arc::new(String::from("secret"));
+
+        let app = Router::new()
+            .route("/", get(|| async { () }))
+            .layer(middleware::from_fn(move |req, next| {
+                authentication(req, next, secret.clone())
+            }));
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .header(http::header::AUTHORIZATION, "Bearer secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+
+        assert!(matches!(res, Ok(response) if response.status() == StatusCode::OK));
+    }
+
+    #[tokio::test]
+    async fn test_authentication_unauthorized() {
+        let secret = Arc::new(String::from("secret"));
+
+        let app = Router::new()
+            .route("/", get(|| async { () }))
+            .layer(middleware::from_fn(move |req, next| {
+                authentication(req, next, secret.clone())
+            }));
+
+        let res = app
+            .oneshot(Request::builder().body(Body::empty()).unwrap())
+            .await;
+
+        assert!(matches!(res, Ok(response) if response.status() == StatusCode::UNAUTHORIZED));
+    }
+}
