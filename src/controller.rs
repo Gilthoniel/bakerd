@@ -43,8 +43,8 @@ impl From<ClientError> for AppError {
     }
 }
 
-/// Controller to return the status of the application.
-pub async fn status(
+/// A controller to return the status of the application.
+pub async fn get_status(
     Extension(repository): Extension<DynStatusRepository>,
 ) -> Result<Json<Status>, AppError> {
     let status = repository.get_last_report().await?;
@@ -93,7 +93,9 @@ pub async fn get_price(
 mod tests {
     use super::*;
     use crate::model::{Pair, Status as StatusView};
-    use crate::repository::{models, MockAccountRepository, MockPriceRepository, MockStatusRepository};
+    use crate::repository::{
+        models, MockAccountRepository, MockPriceRepository, MockStatusRepository,
+    };
     use axum::http::StatusCode;
     use diesel::result::Error as DriverError;
     use mockall::predicate::*;
@@ -121,10 +123,8 @@ mod tests {
     async fn test_status() {
         let mut repository = MockStatusRepository::new();
 
-        repository
-            .expect_get_last_report()
-            .times(1)
-            .returning(|| Ok(StatusView::from(models::Status {
+        repository.expect_get_last_report().times(1).returning(|| {
+            Ok(StatusView::from(models::Status {
                 id: 1,
                 resources: models::ResourceStatusJson {
                     avg_cpu_load: Some(0.5),
@@ -134,9 +134,10 @@ mod tests {
                 },
                 node: None,
                 timestamp_ms: 0,
-            })));
+            }))
+        });
 
-        let res = status(Extension(Arc::new(repository))).await;
+        let res = get_status(Extension(Arc::new(repository))).await;
 
         assert!(matches!(res, Ok(_)));
     }

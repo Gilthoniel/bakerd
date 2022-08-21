@@ -27,6 +27,12 @@ pub mod models {
         pub lottery_power: f64,
     }
 
+    #[derive(Identifiable)]
+    #[diesel(table_name = accounts)]
+    pub struct AccountID {
+        pub id: i32,
+    }
+
     #[derive(Insertable, AsChangeset)]
     #[diesel(table_name = accounts)]
     pub struct NewAccount {
@@ -36,7 +42,8 @@ pub mod models {
         pub lottery_power: f64,
     }
 
-    #[derive(Queryable)]
+    #[derive(Queryable, Identifiable, Associations)]
+    #[diesel(table_name = account_rewards, belongs_to(AccountID, foreign_key = account_id))]
     pub struct Reward {
         pub id: i32,
         pub account_id: i32,
@@ -149,15 +156,13 @@ impl AccountRepository for SqliteAccountRepository {
     }
 
     async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>> {
-        let account_id = account.get_id();
+        let account_id = models::AccountID {
+            id: account.get_id(),
+        };
 
         let res: Vec<models::Reward> = self
             .pool
-            .exec(move |mut conn| {
-                reward_dsl::account_rewards
-                    .filter(reward_dsl::account_id.eq(account_id))
-                    .load(&mut conn)
-            })
+            .exec(move |mut conn| models::Reward::belonging_to(&account_id).load(&mut conn))
             .await?;
 
         Ok(res.into_iter().map(Reward::from).collect())

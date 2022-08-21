@@ -165,7 +165,7 @@ async fn create_app(ctx: &Context, cfg: &Config) -> Router {
     let secret = Arc::new(cfg.get_secret().clone());
 
     Router::new()
-        .route("/", get(controller::status))
+        .route("/", get(controller::get_status))
         .route("/accounts/:addr", get(controller::get_account))
         .route(
             "/accounts/:addr/rewards",
