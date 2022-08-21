@@ -60,7 +60,14 @@ struct Args {
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
+    #[cfg(not(test))]
     let args = Args::parse();
+
+    #[cfg(test)]
+    let args = Args {
+        config_file: "config.yaml".to_string(),
+        data_dir: "data.db".to_string(),
+    };
 
     let mut file = File::open(args.config_file)?;
     let cfg = Config::from_reader(&mut file)?;

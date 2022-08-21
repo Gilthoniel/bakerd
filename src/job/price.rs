@@ -1,7 +1,7 @@
 use super::{AsyncJob, Status};
 use crate::client::PriceClient;
 use crate::model::Pair;
-use crate::repository::DynPriceRepository;
+use crate::repository::{models, DynPriceRepository};
 
 type Client = Box<dyn PriceClient + Sync + Send>;
 
@@ -35,7 +35,14 @@ impl AsyncJob for PriceRefresher {
         let prices = self.client.get_prices(&self.pairs).await?;
 
         for price in prices {
-            self.repository.set_price(&price).await?;
+            let new_price = models::Price {
+                base: price.pair().base().to_string(),
+                quote: price.pair().quote().to_string(),
+                bid: price.bid(),
+                ask: price.ask(),
+            };
+
+            self.repository.set_price(new_price).await?;
         }
 
         Ok(())
@@ -80,7 +87,12 @@ mod tests {
 
         mock_repository
             .expect_set_price()
-            .with(eq(Price::new(("CCD", "USD").into(), 2.0, 0.5)))
+            .with(eq(models::Price {
+                base: "CCD".into(),
+                quote: "USD".into(),
+                bid: 2.0,
+                ask: 0.5,
+            }))
             .times(1)
             .returning(|_| Ok(()));
 

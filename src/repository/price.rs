@@ -6,8 +6,10 @@ use diesel::replace_into;
 use std::sync::Arc;
 
 pub mod models {
+    use crate::schema::prices;
+
     /// Record of an account state on the blockchain.
-    #[derive(Queryable)]
+    #[derive(Queryable, Insertable, PartialEq, Debug)]
     pub struct Price {
         pub base: String,
         pub quote: String,
@@ -23,7 +25,7 @@ pub trait PriceRepository {
     async fn get_price(&self, pair: &Pair) -> Result<Price>;
 
     /// It takes a price and insert or update the price in the storage.
-    async fn set_price(&self, price: &Price) -> Result<()>;
+    async fn set_price(&self, price: models::Price) -> Result<()>;
 }
 
 pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
@@ -43,26 +45,25 @@ impl SqlitePriceRepository {
 #[async_trait]
 impl PriceRepository for SqlitePriceRepository {
     async fn get_price(&self, pair: &Pair) -> Result<Price> {
-        let filter = base.eq(pair.base().to_string());
+        let base_symbol = pair.base().to_string();
+        let quote_symbol = pair.quote().to_string();
 
         let record: models::Price = self
             .pool
-            .exec(|mut conn| prices.filter(filter).first(&mut conn))
+            .exec(|mut conn| {
+                prices
+                    .filter(base.eq(base_symbol))
+                    .filter(quote.eq(quote_symbol))
+                    .first(&mut conn)
+            })
             .await?;
 
         Ok(Price::from(record))
     }
 
-    async fn set_price(&self, price: &Price) -> Result<()> {
-        let values = (
-            base.eq(String::from(price.pair().base())),
-            quote.eq(String::from(price.pair().quote())),
-            bid.eq(price.bid()),
-            ask.eq(price.ask()),
-        );
-
+    async fn set_price(&self, price: models::Price) -> Result<()> {
         self.pool
-            .exec(|mut conn| replace_into(prices).values(values).execute(&mut conn))
+            .exec(move |mut conn| replace_into(prices).values(&price).execute(&mut conn))
             .await?;
 
         Ok(())
@@ -74,7 +75,7 @@ mockall::mock! {
     pub PriceRepository {
         pub fn get_price(&self, pair: &Pair) -> Result<Price>;
 
-        pub fn set_price(&self, price: &Price) -> Result<()>;
+        pub fn set_price(&self, price: models::Price) -> Result<()>;
     }
 }
 
@@ -85,7 +86,7 @@ impl PriceRepository for MockPriceRepository {
         self.get_price(pair)
     }
 
-    async fn set_price(&self, price: &Price) -> Result<()> {
+    async fn set_price(&self, price: models::Price) -> Result<()> {
         self.set_price(price)
     }
 }
@@ -98,13 +99,30 @@ mod integration_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_set_price() {
         let pool = AsyncPool::new(":memory:");
+
         pool.run_migrations().await.unwrap();
 
         let repository = SqlitePriceRepository::new(pool);
 
-        let price = Price::new(Pair::from(("CCD", "USD")), 0.5, 2.4);
+        repository
+            .set_price(models::Price {
+                base: "CCD".to_string(),
+                quote: "BTC".to_string(),
+                bid: 0.00005,
+                ask: 0.00006,
+            })
+            .await
+            .unwrap();
 
-        repository.set_price(&price).await.unwrap();
+        repository
+            .set_price(models::Price {
+                base: "CCD".to_string(),
+                quote: "USD".to_string(),
+                bid: 0.5,
+                ask: 2.4,
+            })
+            .await
+            .unwrap();
 
         let pair = Pair::from(("CCD", "USD"));
 
