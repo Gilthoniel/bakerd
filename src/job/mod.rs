@@ -3,6 +3,7 @@ pub mod block;
 pub mod price;
 pub mod status;
 
+use crate::controller::AppError;
 use cron::Schedule;
 use log::{error, info, warn};
 use std::collections::HashMap;
@@ -12,13 +13,14 @@ use tokio::sync::{watch, Barrier};
 use tokio::task::JoinHandle;
 use tokio::time;
 
-use crate::controller::AppError;
-
 const SCHEDULER_TIMEOUT: Duration = Duration::from_millis(10000);
+
+/// A result of a job execution.
+type Status = std::result::Result<(), AppError>;
 
 #[async_trait]
 pub trait AsyncJob: Sync + Send {
-    async fn execute(&self) -> Result<(), AppError>;
+    async fn execute(&self) -> Status;
 }
 
 struct Context {
@@ -86,7 +88,7 @@ impl Scheduler {
 
     fn schedule_job(ctx: Context, job: Box<dyn AsyncJob>) {
         tokio::spawn(async move {
-            info!("job {} has been scheduled", ctx.name);
+            info!("job [{}] has been scheduled", ctx.name);
 
             let mut closed = ctx.closed;
 
@@ -159,7 +161,7 @@ mod integration_tests {
 
     #[async_trait]
     impl AsyncJob for DummyJob {
-        async fn execute(&self) -> Result<(), AppError> {
+        async fn execute(&self) -> Status {
             self.done.send(true).unwrap();
 
             Ok(())

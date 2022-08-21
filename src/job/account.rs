@@ -1,4 +1,4 @@
-use super::{AppError, AsyncJob};
+use super::{AsyncJob, Status};
 use crate::client::DynNodeClient;
 use crate::repository::{models, DynAccountRepository};
 use rust_decimal::Decimal;
@@ -22,7 +22,7 @@ impl RefreshAccountsJob {
         self.addresses.push(address.to_string());
     }
 
-    async fn do_account(&self, address: &str) -> Result<(), AppError> {
+    async fn do_account(&self, address: &str) -> Status {
         // 1. Get the latest block hash of the consensus to get the most up to
         //    date information.
         let last_block = self.client.get_last_block().await?;
@@ -63,7 +63,7 @@ impl RefreshAccountsJob {
 
 #[async_trait]
 impl AsyncJob for RefreshAccountsJob {
-    async fn execute(&self) -> Result<(), AppError> {
+    async fn execute(&self) -> Status {
         for address in &self.addresses {
             self.do_account(address).await?;
         }

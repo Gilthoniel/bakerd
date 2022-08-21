@@ -1,8 +1,8 @@
-use diesel::prelude::*;
 use super::{AsyncPool, Result};
 use crate::model::{Account, Reward};
 use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
+use diesel::prelude::*;
 use std::sync::Arc;
 
 pub mod models {

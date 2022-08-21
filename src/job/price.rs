@@ -1,4 +1,4 @@
-use super::{AppError, AsyncJob};
+use super::{AsyncJob, Status};
 use crate::client::PriceClient;
 use crate::model::Pair;
 use crate::repository::DynPriceRepository;
@@ -31,7 +31,7 @@ impl PriceRefresher {
 
 #[async_trait]
 impl AsyncJob for PriceRefresher {
-    async fn execute(&self) -> Result<(), AppError> {
+    async fn execute(&self) -> Status {
         let prices = self.client.get_prices(&self.pairs).await?;
 
         for price in prices {

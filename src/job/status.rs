@@ -1,4 +1,4 @@
-use super::{AppError, AsyncJob};
+use super::{AppError, AsyncJob, Status};
 use crate::client::DynNodeClient;
 use crate::repository::{models, DynStatusRepository};
 use chrono::Utc;
@@ -97,7 +97,7 @@ impl StatusChecker {
 
 #[async_trait]
 impl AsyncJob for StatusChecker {
-    async fn execute(&self) -> Result<(), AppError> {
+    async fn execute(&self) -> Status {
         let new_status = models::NewStatus {
             resources: self.get_system_stats().await,
             node: match self.get_node_status().await {

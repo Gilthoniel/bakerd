@@ -1,4 +1,4 @@
-use super::{AppError, AsyncJob};
+use super::{AsyncJob, Status};
 use crate::client::node::BlockInfo;
 use crate::client::DynNodeClient;
 use crate::repository::{models, DynAccountRepository, DynBlockRepository};
@@ -39,7 +39,7 @@ impl BlockFetcher {
 
     /// It processes a block by fetching the data about it and analyzes it to
     /// found relevant events.
-    async fn do_block(&self, block_hash: &str) -> Result<(), AppError> {
+    async fn do_block(&self, block_hash: &str) -> Status {
         let info = self.client.get_block_info(block_hash).await?;
 
         // Insert the account rewards before processing the block.
@@ -64,7 +64,7 @@ impl BlockFetcher {
 
     /// It fetches the special events of a block and tries to find rewards for
     /// the followed accounts.
-    async fn do_rewards(&self, block_info: &BlockInfo) -> Result<(), AppError> {
+    async fn do_rewards(&self, block_info: &BlockInfo) -> Status {
         let summary = self
             .client
             .get_block_summary(&block_info.block_hash)
@@ -115,7 +115,7 @@ impl BlockFetcher {
 
 #[async_trait]
 impl AsyncJob for BlockFetcher {
-    async fn execute(&self) -> Result<(), AppError> {
+    async fn execute(&self) -> Status {
         // The last block of the consensus is fetched once to learn about which
         // blocks need to be caught up.
         let last_block = self.client.get_last_block().await?;
