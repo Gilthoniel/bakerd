@@ -1,4 +1,4 @@
-use super::{AsyncPool, StorageError};
+use super::{AsyncPool, Result};
 use crate::model::Block;
 use crate::schema::blocks::dsl::*;
 use diesel::prelude::*;
@@ -29,12 +29,12 @@ pub mod models {
 /// A repository to store the blocks observed by the application.
 #[async_trait]
 pub trait BlockRepository {
-    async fn get_last_block(&self) -> Result<Block, StorageError>;
+    async fn get_last_block(&self) -> Result<Block>;
 
-    async fn store(&self, block: models::NewBlock) -> Result<(), StorageError>;
+    async fn store(&self, block: models::NewBlock) -> Result<()>;
 
     /// It deletes the block with a height below the given value.
-    async fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError>;
+    async fn garbage_collect(&self, below_height: i64) -> Result<()>;
 }
 
 pub type DynBlockRepository = Arc<dyn BlockRepository + Sync + Send>;
@@ -54,7 +54,7 @@ impl SqliteBlockRepository {
 
 #[async_trait]
 impl BlockRepository for SqliteBlockRepository {
-    async fn get_last_block(&self) -> Result<Block, StorageError> {
+    async fn get_last_block(&self) -> Result<Block> {
         let record: models::Block = self
             .pool
             .exec(|mut conn| blocks.order_by(height.desc()).first(&mut conn))
@@ -63,7 +63,7 @@ impl BlockRepository for SqliteBlockRepository {
         Ok(Block::from(record))
     }
 
-    async fn store(&self, block: models::NewBlock) -> Result<(), StorageError> {
+    async fn store(&self, block: models::NewBlock) -> Result<()> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(blocks)
@@ -75,7 +75,7 @@ impl BlockRepository for SqliteBlockRepository {
         Ok(())
     }
 
-    async fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError> {
+    async fn garbage_collect(&self, below_height: i64) -> Result<()> {
         self.pool
             .exec(move |mut conn| {
                 diesel::delete(blocks)
@@ -91,24 +91,24 @@ impl BlockRepository for SqliteBlockRepository {
 #[cfg(test)]
 mockall::mock! {
     pub BlockRepository {
-        pub fn get_last_block(&self) -> Result<Block, StorageError>;
-        pub fn store(&self, block: models::NewBlock) -> Result<(), StorageError>;
-        pub fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError>;
+        pub fn get_last_block(&self) -> Result<Block>;
+        pub fn store(&self, block: models::NewBlock) -> Result<()>;
+        pub fn garbage_collect(&self, below_height: i64) -> Result<()>;
     }
 }
 
 #[cfg(test)]
 #[async_trait]
 impl BlockRepository for MockBlockRepository {
-    async fn get_last_block(&self) -> Result<Block, StorageError> {
+    async fn get_last_block(&self) -> Result<Block> {
         self.get_last_block()
     }
 
-    async fn store(&self, block: models::NewBlock) -> Result<(), StorageError> {
+    async fn store(&self, block: models::NewBlock) -> Result<()> {
         self.store(block)
     }
 
-    async fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError> {
+    async fn garbage_collect(&self, below_height: i64) -> Result<()> {
         self.garbage_collect(below_height)
     }
 }
@@ -116,7 +116,7 @@ impl BlockRepository for MockBlockRepository {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::repository::AsyncPool;
+    use crate::repository::{AsyncPool, RepositoryError};
     use diesel::result::Error;
 
     #[tokio::test(flavor = "multi_thread")]
@@ -152,7 +152,7 @@ mod integration_tests {
 
         assert!(matches!(
             repository.get_last_block().await,
-            Err(e) if matches!(&e, StorageError::Driver(d) if matches!(d, Error::NotFound)),
+            Err(e) if matches!(&e, RepositoryError::Driver(d) if matches!(d, Error::NotFound)),
         ));
     }
 }

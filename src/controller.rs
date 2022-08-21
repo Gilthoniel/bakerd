@@ -1,7 +1,7 @@
 use crate::client::Error as ClientError;
 use crate::model::{Account, Price, Reward, Status};
 use crate::repository::{
-    DynAccountRepository, DynPriceRepository, DynStatusRepository, StorageError,
+    DynAccountRepository, DynPriceRepository, DynStatusRepository, RepositoryError,
 };
 use axum::{
     extract::{Extension, Path},
@@ -13,7 +13,7 @@ use axum::{
 /// An global definition of errors for the application.
 #[derive(Debug)]
 pub enum AppError {
-    Storage(StorageError),
+    Repository(RepositoryError),
     Client(ClientError),
 }
 
@@ -22,17 +22,17 @@ impl IntoResponse for AppError {
     /// status and a message, or a default internal server error.
     fn into_response(self) -> Response {
         match self {
-            Self::Storage(e) => e.status_code(),
+            Self::Repository(e) => e.status_code(),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "node error"),
         }
         .into_response()
     }
 }
 
-impl From<StorageError> for AppError {
-    /// It builds an application error from a storage error.
-    fn from(e: StorageError) -> Self {
-        Self::Storage(e)
+impl From<RepositoryError> for AppError {
+    /// It builds an application error from a repository error.
+    fn from(e: RepositoryError) -> Self {
+        Self::Repository(e)
     }
 }
 
@@ -111,7 +111,7 @@ mod tests {
 
         assert_eq!(
             StatusCode::NOT_FOUND,
-            AppError::from(StorageError::Driver(DriverError::NotFound))
+            AppError::from(RepositoryError::Driver(DriverError::NotFound))
                 .into_response()
                 .status(),
         );
@@ -154,12 +154,12 @@ mod tests {
             .expect_get_account()
             .with(eq(addr))
             .times(1)
-            .returning(|_| Err(StorageError::Driver(DriverError::NotFound)));
+            .returning(|_| Err(RepositoryError::Driver(DriverError::NotFound)));
 
         let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await;
 
         assert!(
-            matches!(res, Err(AppError::Storage(e)) if e.status_code().0 == StatusCode::NOT_FOUND)
+            matches!(res, Err(AppError::Repository(e)) if e.status_code().0 == StatusCode::NOT_FOUND)
         );
     }
 
@@ -236,12 +236,12 @@ mod tests {
             .expect_get_price()
             .with(eq(pair))
             .times(1)
-            .returning(move |_| Err(StorageError::Driver(DriverError::NotFound)));
+            .returning(move |_| Err(RepositoryError::Driver(DriverError::NotFound)));
 
         let res = get_price(Path("".into()), Extension(Arc::new(repository))).await;
 
         assert!(
-            matches!(res, Err(AppError::Storage(e)) if e.status_code().0 == StatusCode::NOT_FOUND)
+            matches!(res, Err(AppError::Repository(e)) if e.status_code().0 == StatusCode::NOT_FOUND)
         );
     }
 }

@@ -42,17 +42,17 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 /// An alias of the pooled connection from the r2d2 crate for SQLite.
 type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 
-pub type Result<T> = std::result::Result<T, StorageError>;
+pub type Result<T> = std::result::Result<T, RepositoryError>;
 
 /// A generic error for the implementations of the different repositories.
 #[derive(Debug)]
-pub enum StorageError {
+pub enum RepositoryError {
     Pool(r2d2::Error),
     Driver(DriverError),
     Migration(Box<dyn std::error::Error>),
 }
 
-impl StorageError {
+impl RepositoryError {
     /// It returns a tuple of the HTTP code associated with the storage error as
     /// well as a human-readable message.
     pub fn status_code(&self) -> (StatusCode, &'static str) {
@@ -65,13 +65,13 @@ impl StorageError {
     }
 }
 
-impl From<r2d2::Error> for StorageError {
+impl From<r2d2::Error> for RepositoryError {
     fn from(e: r2d2::Error) -> Self {
         Self::Pool(e)
     }
 }
 
-impl From<DriverError> for StorageError {
+impl From<DriverError> for RepositoryError {
     fn from(e: DriverError) -> Self {
         Self::Driver(e)
     }
@@ -102,13 +102,13 @@ impl AsyncPool {
         let mut conn = self.get_conn().await?;
 
         conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| StorageError::Migration(e))?;
+            .map_err(|e| RepositoryError::Migration(e))?;
 
         Ok(())
     }
 
     pub async fn get_conn(&self) -> Result<Connection> {
-        tokio::task::block_in_place(|| self.pool.get().map_err(StorageError::from))
+        tokio::task::block_in_place(|| self.pool.get().map_err(RepositoryError::from))
     }
 
     pub async fn exec<F, T>(&self, stmt: F) -> Result<T>
@@ -117,9 +117,9 @@ impl AsyncPool {
         T: Send + 'static,
     {
         tokio::task::block_in_place(|| {
-            let conn = self.pool.get().map_err(StorageError::from)?;
+            let conn = self.pool.get().map_err(RepositoryError::from)?;
 
-            stmt(conn).map_err(StorageError::from)
+            stmt(conn).map_err(RepositoryError::from)
         })
     }
 }

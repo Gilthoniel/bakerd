@@ -1,4 +1,4 @@
-use super::{AsyncPool, StorageError};
+use super::{AsyncPool, Result};
 use crate::model::Status;
 use crate::schema::statuses::dsl::*;
 use diesel::prelude::*;
@@ -86,11 +86,11 @@ pub mod models {
 
 #[async_trait]
 pub trait StatusRepository {
-    async fn get_last_report(&self) -> Result<Status, StorageError>;
+    async fn get_last_report(&self) -> Result<Status>;
 
-    async fn report(&self, status: models::NewStatus) -> Result<(), StorageError>;
+    async fn report(&self, status: models::NewStatus) -> Result<()>;
 
-    async fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError>;
+    async fn garbage_collect(&self, after_nth: i64) -> Result<()>;
 }
 
 pub type DynStatusRepository = Arc<dyn StatusRepository + Sync + Send>;
@@ -107,7 +107,7 @@ impl SqliteStatusRepository {
 
 #[async_trait]
 impl StatusRepository for SqliteStatusRepository {
-    async fn get_last_report(&self) -> Result<Status, StorageError> {
+    async fn get_last_report(&self) -> Result<Status> {
         let res: models::Status = self
             .pool
             .exec(|mut conn| statuses.order_by(timestamp_ms.desc()).first(&mut conn))
@@ -116,7 +116,7 @@ impl StatusRepository for SqliteStatusRepository {
         Ok(Status::from(res))
     }
 
-    async fn report(&self, status: models::NewStatus) -> Result<(), StorageError> {
+    async fn report(&self, status: models::NewStatus) -> Result<()> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(statuses)
@@ -129,7 +129,7 @@ impl StatusRepository for SqliteStatusRepository {
     }
 
     /// It keeps the most recent nth reports and deletes the other ones.
-    async fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError> {
+    async fn garbage_collect(&self, after_nth: i64) -> Result<()> {
         self.pool
             .exec(move |mut conn| {
                 diesel::delete(statuses)
@@ -153,24 +153,24 @@ impl StatusRepository for SqliteStatusRepository {
 #[cfg(test)]
 mockall::mock! {
     pub StatusRepository {
-        pub fn get_last_report(&self) -> Result<Status, StorageError>;
-        pub fn report(&self, status: models::NewStatus) -> Result<(), StorageError>;
-        pub fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError>;
+        pub fn get_last_report(&self) -> Result<Status>;
+        pub fn report(&self, status: models::NewStatus) -> Result<()>;
+        pub fn garbage_collect(&self, after_nth: i64) -> Result<()>;
     }
 }
 
 #[cfg(test)]
 #[async_trait]
 impl StatusRepository for MockStatusRepository {
-    async fn get_last_report(&self) -> Result<Status, StorageError> {
+    async fn get_last_report(&self) -> Result<Status> {
         self.get_last_report()
     }
 
-    async fn report(&self, status: models::NewStatus) -> Result<(), StorageError> {
+    async fn report(&self, status: models::NewStatus) -> Result<()> {
         self.report(status)
     }
 
-    async fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError> {
+    async fn garbage_collect(&self, after_nth: i64) -> Result<()> {
         self.garbage_collect(after_nth)
     }
 }

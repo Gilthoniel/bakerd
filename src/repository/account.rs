@@ -1,6 +1,5 @@
 use diesel::prelude::*;
-
-use super::{AsyncPool, StorageError};
+use super::{AsyncPool, Result};
 use crate::model::{Account, Reward};
 use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
@@ -90,19 +89,19 @@ pub mod models {
 #[async_trait]
 pub trait AccountRepository {
     /// It returns the account associated to the address if it exists.
-    async fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
+    async fn get_account(&self, addr: &str) -> Result<Account>;
 
     /// It creates or updates an existing account using the address as the
     /// identifier.
-    async fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError>;
+    async fn set_account(&self, account: models::NewAccount) -> Result<()>;
 
     /// It returns the list of rewards known for an account using the address to
     /// identity it.
-    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError>;
+    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>>;
 
     /// It creates an account reward if it does not exist already. The reward is
     /// identified by the account, the block and its kind.
-    async fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError>;
+    async fn set_reward(&self, reward: models::NewReward) -> Result<()>;
 }
 
 /// An alias of a singleton of an account repository shared in the application.
@@ -123,7 +122,7 @@ impl SqliteAccountRepository {
 #[async_trait]
 impl AccountRepository for SqliteAccountRepository {
     /// It returns the account with the given address if it exists.
-    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
+    async fn get_account(&self, addr: &str) -> Result<Account> {
         let addr = addr.to_string();
 
         let record: models::Account = self
@@ -134,7 +133,7 @@ impl AccountRepository for SqliteAccountRepository {
         Ok(Account::from(record))
     }
 
-    async fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError> {
+    async fn set_account(&self, account: models::NewAccount) -> Result<()> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(accounts)
@@ -149,7 +148,7 @@ impl AccountRepository for SqliteAccountRepository {
         Ok(())
     }
 
-    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError> {
+    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>> {
         let account_id = account.get_id();
 
         let res: Vec<models::Reward> = self
@@ -164,7 +163,7 @@ impl AccountRepository for SqliteAccountRepository {
         Ok(res.into_iter().map(Reward::from).collect())
     }
 
-    async fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError> {
+    async fn set_reward(&self, reward: models::NewReward) -> Result<()> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(reward_dsl::account_rewards)
@@ -186,29 +185,29 @@ impl AccountRepository for SqliteAccountRepository {
 #[cfg(test)]
 mockall::mock! {
     pub AccountRepository {
-        pub fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
-        pub fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError>;
-        pub fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError>;
-        pub fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError>;
+        pub fn get_account(&self, addr: &str) -> Result<Account>;
+        pub fn set_account(&self, account: models::NewAccount) -> Result<()>;
+        pub fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>>;
+        pub fn set_reward(&self, reward: models::NewReward) -> Result<()>;
     }
 }
 
 #[cfg(test)]
 #[async_trait]
 impl AccountRepository for MockAccountRepository {
-    async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
+    async fn get_account(&self, addr: &str) -> Result<Account> {
         self.get_account(addr)
     }
 
-    async fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError> {
+    async fn set_account(&self, account: models::NewAccount) -> Result<()> {
         self.set_account(account)
     }
 
-    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError> {
+    async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>> {
         self.get_rewards(account)
     }
 
-    async fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError> {
+    async fn set_reward(&self, reward: models::NewReward) -> Result<()> {
         self.set_reward(reward)
     }
 }

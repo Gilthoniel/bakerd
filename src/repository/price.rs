@@ -1,4 +1,4 @@
-use super::{AsyncPool, StorageError};
+use super::{AsyncPool, Result};
 use crate::model::{Pair, Price};
 use crate::schema::prices::dsl::*;
 use diesel::prelude::*;
@@ -20,10 +20,10 @@ pub mod models {
 #[async_trait]
 pub trait PriceRepository {
     /// It takes a pair and return the price if found in the storage.
-    async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError>;
+    async fn get_price(&self, pair: &Pair) -> Result<Price>;
 
     /// It takes a price and insert or update the price in the storage.
-    async fn set_price(&self, price: &Price) -> Result<(), StorageError>;
+    async fn set_price(&self, price: &Price) -> Result<()>;
 }
 
 pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
@@ -42,7 +42,7 @@ impl SqlitePriceRepository {
 
 #[async_trait]
 impl PriceRepository for SqlitePriceRepository {
-    async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError> {
+    async fn get_price(&self, pair: &Pair) -> Result<Price> {
         let filter = base.eq(pair.base().to_string());
 
         let record: models::Price = self
@@ -53,7 +53,7 @@ impl PriceRepository for SqlitePriceRepository {
         Ok(Price::from(record))
     }
 
-    async fn set_price(&self, price: &Price) -> Result<(), StorageError> {
+    async fn set_price(&self, price: &Price) -> Result<()> {
         let values = (
             base.eq(String::from(price.pair().base())),
             quote.eq(String::from(price.pair().quote())),
@@ -72,20 +72,20 @@ impl PriceRepository for SqlitePriceRepository {
 #[cfg(test)]
 mockall::mock! {
     pub PriceRepository {
-        pub fn get_price(&self, pair: &Pair) -> Result<Price, StorageError>;
+        pub fn get_price(&self, pair: &Pair) -> Result<Price>;
 
-        pub fn set_price(&self, price: &Price) -> Result<(), StorageError>;
+        pub fn set_price(&self, price: &Price) -> Result<()>;
     }
 }
 
 #[cfg(test)]
 #[async_trait]
 impl PriceRepository for MockPriceRepository {
-    async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError> {
+    async fn get_price(&self, pair: &Pair) -> Result<Price> {
         self.get_price(pair)
     }
 
-    async fn set_price(&self, price: &Price) -> Result<(), StorageError> {
+    async fn set_price(&self, price: &Price) -> Result<()> {
         self.set_price(price)
     }
 }
@@ -93,6 +93,7 @@ impl PriceRepository for MockPriceRepository {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    use crate::repository::RepositoryError;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_set_price() {
@@ -123,6 +124,6 @@ mod integration_tests {
 
         let res = repository.get_price(&Pair::from(("CCD", "USD"))).await;
 
-        assert!(matches!(res, Err(StorageError::Driver(_))));
+        assert!(matches!(res, Err(RepositoryError::Driver(_))));
     }
 }
