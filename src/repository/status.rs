@@ -90,6 +90,8 @@ pub trait StatusRepository {
     async fn get_last_report(&self) -> Result<Status, StorageError>;
 
     async fn report(&self, status: NewStatus) -> Result<(), StorageError>;
+
+    async fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError>;
 }
 
 pub struct SqliteStatusRepository {
@@ -124,6 +126,27 @@ impl StatusRepository for SqliteStatusRepository {
 
         Ok(())
     }
+
+    /// It keeps the most recent nth reports and deletes the other ones.
+    async fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError> {
+        self.pool
+            .exec(move |mut conn| {
+                diesel::delete(statuses)
+                    .filter(
+                        id.ne_all(
+                            statuses
+                                .select(id)
+                                .order_by(timestamp_ms.desc())
+                                .limit(after_nth)
+                                .into_boxed(),
+                        ),
+                    )
+                    .execute(&mut conn)
+            })
+            .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +154,7 @@ mockall::mock! {
     pub StatusRepository {
         pub fn get_last_report(&self) -> Result<Status, StorageError>;
         pub fn report(&self, status: NewStatus) -> Result<(), StorageError>;
+        pub fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError>;
     }
 }
 
@@ -144,6 +168,10 @@ impl StatusRepository for MockStatusRepository {
     async fn report(&self, status: NewStatus) -> Result<(), StorageError> {
         self.report(status)
     }
+
+    async fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError> {
+        self.garbage_collect(after_nth)
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +181,7 @@ mod integration_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_report_and_get() {
         let pool = AsyncPool::new(":memory:");
+
         pool.run_migrations().await.unwrap();
 
         let repository = SqliteStatusRepository::new(pool);
@@ -182,5 +211,51 @@ mod integration_tests {
         let res = repository.get_last_report().await;
 
         assert!(matches!(res, Ok(_)));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_garbage_collect() {
+        let pool = AsyncPool::new(":memory:");
+
+        pool.run_migrations().await.unwrap();
+
+        let repository = SqliteStatusRepository::new(pool.clone());
+
+        // Create two reports.
+        let first_report = NewStatus {
+            resources: ResourceStatusJson {
+                avg_cpu_load: None,
+                mem_free: None,
+                mem_total: None,
+                uptime_secs: None,
+            },
+            node: None,
+            timestamp_ms: 1000,
+        };
+
+        assert!(matches!(repository.report(first_report).await, Ok(_)));
+
+        let second_report = NewStatus {
+            resources: ResourceStatusJson {
+                avg_cpu_load: None,
+                mem_free: None,
+                mem_total: None,
+                uptime_secs: None,
+            },
+            node: None,
+            timestamp_ms: 2000,
+        };
+
+        assert!(matches!(repository.report(second_report).await, Ok(_)));
+
+        let res = repository.garbage_collect(1).await;
+
+        assert!(matches!(res, Ok(_)));
+
+        let count = pool
+            .exec(|mut conn| statuses.count().execute(&mut conn))
+            .await;
+
+        assert!(matches!(count, Ok(1)));
     }
 }

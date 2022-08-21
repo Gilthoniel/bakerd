@@ -9,6 +9,8 @@ use std::time::Duration;
 use systemstat::{Platform, System};
 use tokio::time;
 
+const MAX_NUM_REPORT: i64 = 10_000;
+
 /// A job to create a report of the status of the server and the blockchain
 /// node.
 pub struct StatusChecker {
@@ -108,6 +110,10 @@ impl AsyncJob for StatusChecker {
 
         self.repository.report(new_status).await?;
 
+        // Keep only the most recent reports to avoid filling up the storage
+        // indefinitely.
+        self.repository.garbage_collect(MAX_NUM_REPORT).await?;
+
         Ok(())
     }
 }
@@ -118,6 +124,7 @@ mod tests {
     use crate::client::node::{MockNodeClient, NodeInfo, NodeStats};
     use crate::repository::status::MockStatusRepository;
     use std::sync::Arc;
+    use mockall::predicate::*;
 
     #[tokio::test]
     async fn test_execute() {
@@ -152,6 +159,12 @@ mod tests {
         repository
             .expect_report()
             .withf(|status| !status.node.is_none())
+            .times(1)
+            .returning(|_| Ok(()));
+
+        repository
+            .expect_garbage_collect()
+            .with(eq(MAX_NUM_REPORT))
             .times(1)
             .returning(|_| Ok(()));
 
