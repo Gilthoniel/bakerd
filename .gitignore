@@ -1,3 +1,10 @@
 /target
+
+# Ignore the Debian package.
+bakerd.deb
+
+# Ignore the dev database.
 data.db
+
+# Ignore the code coverage report.
 tarpaulin-report.html

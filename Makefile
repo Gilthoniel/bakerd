@@ -6,3 +6,8 @@ test:
 
 migration-redo:
 	diesel migration redo --database-url data.db
+
+install:
+	cargo build -r
+	cp target/release/bakerd bakerd/usr/bin/.
+	dpkg-deb --root-owner-group --build bakerd

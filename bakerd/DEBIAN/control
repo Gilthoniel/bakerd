@@ -1,0 +1,9 @@
+Package: bakerd
+Version: 0.2.2
+Section: development
+Priority: optional
+Architecture: all
+Depends:
+Maintainer: gaylor.bosson@gmail.com
+Description: Baker daemon
+ Runs a web service to provide status about a baker node.

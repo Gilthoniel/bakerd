@@ -1,0 +1,39 @@
+[Unit]
+Description=Baker daemon
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bakerd --config-file ${STATE_DIRECTORY}/config/config.yaml --data-dir ${STATE_DIRECTORY}/data/data.db
+Restart=always
+RestartSec=20
+
+# sandboxing
+# do not allow the process to access /home, /root, and /run/user
+ProtectHome=yes
+# mount /usr, /boot, /efi, and /etc as read-only. Implied by dynamic-user as well.
+ProtectSystem=strict
+NoNewPrivileges=yes
+ProtectClock=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHostname=yes
+PrivateUsers=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+CapabilityBoundingSet=
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+DynamicUser=yes
+# state directory is relative to /var/lib/, see systemd man pages Sandboxing section.
+# This sets the STATE_DIRECTORY environment variable that is used as part of the ExecStart command.
+StateDirectory=bakerd
+# relative to the state directory root %S
+WorkingDirectory=%S/bakerd
+    
+[Install]
+# start the service when reaching multi-user target
+WantedBy=multi-user.target

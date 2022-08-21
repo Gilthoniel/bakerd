@@ -118,6 +118,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "bakerd"
+version = "0.2.2"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "clap",
+ "cron",
+ "diesel",
+ "diesel_migrations",
+ "env_logger",
+ "log",
+ "mockall",
+ "prost",
+ "r2d2",
+ "reqwest",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "serde_yaml",
+ "systemstat",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "tower",
+]
+
+[[package]]
 name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -170,6 +201,45 @@ dependencies = [
  "num-traits",
  "time",
  "winapi",
+]
+
+[[package]]
+name = "clap"
+version = "3.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29e724a68d9319343bb3328c9cc2dfde263f4b3142ee1059a9980580171c954b"
+dependencies = [
+ "atty",
+ "bitflags",
+ "clap_derive",
+ "clap_lex",
+ "indexmap",
+ "once_cell",
+ "strsim",
+ "termcolor",
+ "textwrap",
+]
+
+[[package]]
+name = "clap_derive"
+version = "3.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13547f7012c01ab4a0e8f8967730ada8f9fdf419e8b6c792788f39cf4e46eefa"
+dependencies = [
+ "heck",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "clap_lex"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
+dependencies = [
+ "os_str_bytes",
 ]
 
 [[package]]
@@ -882,6 +952,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "os_str_bytes"
+version = "6.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ff7415e9ae3fff1225851df9e0d9e4e5479f947619774677a63572e55e80eff"
+
+[[package]]
 name = "parking_lot"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1401,36 +1477,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "staking"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "cron",
- "diesel",
- "diesel_migrations",
- "env_logger",
- "log",
- "mockall",
- "prost",
- "r2d2",
- "reqwest",
- "rust_decimal",
- "rust_decimal_macros",
- "serde",
- "serde_json",
- "serde_with",
- "serde_yaml",
- "systemstat",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "tower",
-]
-
-[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1495,6 +1541,12 @@ name = "termtree"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "507e9898683b6c43a9aa55b64259b721b52ba226e0f3779137e50ad114a4c90b"
+
+[[package]]
+name = "textwrap"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1141d4d61095b28419e22cb0bbf02755f5e54e0526f97f1e3d1d160e60885fb"
 
 [[package]]
 name = "time"

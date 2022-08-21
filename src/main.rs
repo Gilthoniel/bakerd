@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
-
 use config::Config;
 use controller::AppError;
 use job::Jobber;
@@ -14,6 +13,7 @@ use repository::{
     price::SqlitePriceRepository as PriceRepository, AsyncPool, DynAccountRepository,
     DynBlockRepository, DynPriceRepository, DynStatusRepository,
 };
+use clap::Parser;
 
 #[macro_use]
 extern crate diesel;
@@ -51,11 +51,23 @@ impl Context {
     }
 }
 
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+  #[clap(short, long, value_parser, default_value = "config.yaml")]
+  config_file: String,
+
+  #[clap(short, long, value_parser, default_value = "data.db")]
+  data_dir: String,
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
-    let mut file = File::open("./config.yaml")?;
+    let args = Args::parse();
+
+    let mut file = File::open(args.config_file)?;
     let cfg = Config::from_reader(&mut file)?;
 
     #[cfg(not(test))]
@@ -67,7 +79,7 @@ async fn main() -> std::io::Result<()> {
     #[cfg(test)]
     let termination = async {};
 
-    run_server(&cfg, termination).await.unwrap();
+    run_server(&cfg, &args.data_dir, termination).await.unwrap();
 
     Ok(())
 }
@@ -134,8 +146,8 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
     scheduler.start()
 }
 
-async fn prepare_context() -> Result<Context, AppError> {
-    let pool = AsyncPool::new("data.db");
+async fn prepare_context(data_dir: &str) -> Result<Context, AppError> {
+    let pool = AsyncPool::new(data_dir);
 
     // Always run the migration to make sure the application is ready to use the
     // storage.
@@ -171,9 +183,10 @@ async fn create_app(ctx: &Context, cfg: &Config) -> Router {
 /// The binding address is defined by the configuration.
 async fn run_server(
     cfg: &Config,
+    data_dir: &str,
     termination: impl std::future::Future<Output = ()>,
 ) -> Result<(), AppError> {
-    let ctx = prepare_context().await?;
+    let ctx = prepare_context(data_dir).await?;
 
     let jobber = prepare_jobs(cfg, &ctx).await;
 
@@ -235,12 +248,12 @@ mod integration_tests {
     async fn test_run_server() {
         let cfg = Config::default();
 
-        run_server(&cfg, async {}).await.unwrap();
+        run_server(&cfg, ":memory:", async {}).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_account() {
-        let ctx = prepare_context().await.unwrap();
+        let ctx = prepare_context(":memory:").await.unwrap();
 
         let app = create_app(&ctx, &Config::default()).await;
 

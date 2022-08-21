@@ -1,0 +1,7 @@
+listen_address: 127.0.0.1:8080
+secret: XSBHYzlJcjx0fFVFSXh4ZzFKIS0=
+jobs:
+  accounts_refresher: "*/60 * * * * *"
+  price_refresher: "*/60 * * * * *"
+  block_fetcher: "*/60 * * * * *"
+  status_checker: "*/60 * * * * *"
