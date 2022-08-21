@@ -2,10 +2,9 @@ use super::{AsyncPool, StorageError};
 use crate::model::Block;
 use crate::schema::blocks::dsl::*;
 use diesel::prelude::*;
+use std::sync::Arc;
 
-pub use records::NewBlock;
-
-pub mod records {
+pub mod models {
     use crate::schema::blocks;
 
     #[derive(Queryable)]
@@ -32,11 +31,13 @@ pub mod records {
 pub trait BlockRepository {
     async fn get_last_block(&self) -> Result<Block, StorageError>;
 
-    async fn store(&self, block: NewBlock) -> Result<(), StorageError>;
+    async fn store(&self, block: models::NewBlock) -> Result<(), StorageError>;
 
     /// It deletes the block with a height below the given value.
     async fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError>;
 }
+
+pub type DynBlockRepository = Arc<dyn BlockRepository + Sync + Send>;
 
 /// A repository supported by SQLite to store the blocks observed by the
 /// application.
@@ -54,7 +55,7 @@ impl SqliteBlockRepository {
 #[async_trait]
 impl BlockRepository for SqliteBlockRepository {
     async fn get_last_block(&self) -> Result<Block, StorageError> {
-        let record: records::Block = self
+        let record: models::Block = self
             .pool
             .exec(|mut conn| blocks.order_by(height.desc()).first(&mut conn))
             .await?;
@@ -62,7 +63,7 @@ impl BlockRepository for SqliteBlockRepository {
         Ok(Block::from(record))
     }
 
-    async fn store(&self, block: NewBlock) -> Result<(), StorageError> {
+    async fn store(&self, block: models::NewBlock) -> Result<(), StorageError> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(blocks)
@@ -91,7 +92,7 @@ impl BlockRepository for SqliteBlockRepository {
 mockall::mock! {
     pub BlockRepository {
         pub fn get_last_block(&self) -> Result<Block, StorageError>;
-        pub fn store(&self, block: NewBlock) -> Result<(), StorageError>;
+        pub fn store(&self, block: models::NewBlock) -> Result<(), StorageError>;
         pub fn garbage_collect(&self, below_height: i64) -> Result<(), StorageError>;
     }
 }
@@ -103,7 +104,7 @@ impl BlockRepository for MockBlockRepository {
         self.get_last_block()
     }
 
-    async fn store(&self, block: NewBlock) -> Result<(), StorageError> {
+    async fn store(&self, block: models::NewBlock) -> Result<(), StorageError> {
         self.store(block)
     }
 
@@ -125,7 +126,7 @@ mod integration_tests {
 
         let repository = SqliteBlockRepository::new(pool);
 
-        let new_block = NewBlock {
+        let new_block = models::NewBlock {
             // Previous block is inserted by the migration.
             height: 2840312,
             hash: ":hash:".to_string(),

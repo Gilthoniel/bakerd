@@ -1,14 +1,13 @@
+use crate::client::Error as ClientError;
+use crate::model::{Account, Price, Reward, Status};
+use crate::repository::{
+    DynAccountRepository, DynPriceRepository, DynStatusRepository, StorageError,
+};
 use axum::{
     extract::{Extension, Path},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
-};
-
-use crate::client::Error as ClientError;
-use crate::model::{Account, Price, Reward, Status};
-use crate::repository::{
-    DynAccountRepository, DynPriceRepository, DynStatusRepository, StorageError,
 };
 
 /// An global definition of errors for the application.
@@ -94,11 +93,7 @@ pub async fn get_price(
 mod tests {
     use super::*;
     use crate::model::Pair;
-    use crate::repository::account::records::{
-        Account as AccountRecord, Reward as RewardRecord, RewardKind,
-    };
-    use crate::repository::account::MockAccountRepository;
-    use crate::repository::price::MockPriceRepository;
+    use crate::repository::{models, MockAccountRepository, MockPriceRepository};
     use axum::http::StatusCode;
     use diesel::result::Error as DriverError;
     use mockall::predicate::*;
@@ -126,7 +121,7 @@ mod tests {
     async fn test_get_account() {
         let mut repository = MockAccountRepository::default();
 
-        let account = Account::from(AccountRecord {
+        let account = Account::from(models::Account {
             id: 1,
             address: ":address:".into(),
             available_amount: "125".into(),
@@ -177,7 +172,7 @@ mod tests {
             .with(eq(":address:"))
             .times(1)
             .returning(|_| {
-                Ok(Account::from(AccountRecord {
+                Ok(Account::from(models::Account {
                     id: 1,
                     address: ":address:".into(),
                     available_amount: "125".into(),
@@ -191,13 +186,13 @@ mod tests {
             .withf(|a| a.get_id() == 1)
             .times(1)
             .returning(|_| {
-                Ok(vec![Reward::from(RewardRecord {
+                Ok(vec![Reward::from(models::Reward {
                     id: 1,
                     account_id: 1,
                     block_hash: ":hash:".to_string(),
                     amount: "25.76".to_string(),
                     epoch_ms: 0,
-                    kind: RewardKind::TransactionFee,
+                    kind: models::RewardKind::TransactionFee,
                 })])
             });
 

@@ -1,10 +1,4 @@
-use crate::repository::account::records::{
-    Account as AccountRecord, Reward as RewardRecord, RewardKind as SqlRewardKind,
-};
-use crate::repository::block::records::Block as BlockRecord;
-use crate::repository::price::PriceRecord;
-use crate::repository::status::records::Status as StatusRecord;
-use crate::repository::status::{NodeStatusJson, ResourceStatusJson};
+use crate::repository::models;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -26,9 +20,9 @@ impl Account {
     }
 }
 
-impl From<AccountRecord> for Account {
+impl From<models::Account> for Account {
     /// It creates an account from a record of the storage layer.
-    fn from(record: AccountRecord) -> Self {
+    fn from(record: models::Account) -> Self {
         Self {
             id: record.id,
             address: record.address,
@@ -50,12 +44,12 @@ pub enum RewardKind {
     TransactionFee,
 }
 
-impl From<SqlRewardKind> for RewardKind {
+impl From<models::RewardKind> for RewardKind {
     /// It converts an SQL reward kind into the model one.
-    fn from(kind: SqlRewardKind) -> Self {
+    fn from(kind: models::RewardKind) -> Self {
         match kind {
-            SqlRewardKind::Baker => Self::Baker,
-            SqlRewardKind::TransactionFee => Self::TransactionFee,
+            models::RewardKind::Baker => Self::Baker,
+            models::RewardKind::TransactionFee => Self::TransactionFee,
         }
     }
 }
@@ -72,8 +66,8 @@ pub struct Reward {
     kind: RewardKind,
 }
 
-impl From<RewardRecord> for Reward {
-    fn from(record: RewardRecord) -> Self {
+impl From<models::Reward> for Reward {
+    fn from(record: models::Reward) -> Self {
         Self {
             id: record.id,
             account_id: record.account_id,
@@ -131,8 +125,8 @@ impl Price {
     }
 }
 
-impl From<PriceRecord> for Price {
-    fn from(record: PriceRecord) -> Self {
+impl From<models::Price> for Price {
+    fn from(record: models::Price) -> Self {
         Self {
             pair: Pair(record.base, record.quote),
             bid: record.bid,
@@ -156,8 +150,8 @@ impl Block {
     }
 }
 
-impl From<BlockRecord> for Block {
-    fn from(record: BlockRecord) -> Self {
+impl From<models::Block> for Block {
+    fn from(record: models::Block) -> Self {
         Self {
             height: record.height,
             hash: record.hash,
@@ -170,13 +164,13 @@ impl From<BlockRecord> for Block {
 #[derive(Serialize, Debug)]
 pub struct Status {
     id: i32,
-    resources: ResourceStatusJson,
-    node: Option<NodeStatusJson>,
+    resources: models::ResourceStatusJson,
+    node: Option<models::NodeStatusJson>,
     timestamp_ms: i64,
 }
 
-impl From<StatusRecord> for Status {
-    fn from(record: StatusRecord) -> Self {
+impl From<models::Status> for Status {
+    fn from(record: models::Status) -> Self {
         Self {
             id: record.id,
             resources: record.resources,

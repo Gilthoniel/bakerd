@@ -1,19 +1,32 @@
-use diesel::prelude::*;
-use diesel::replace_into;
-
-use super::{AsyncPool, PriceRepository, StorageError};
-
+use super::{AsyncPool, StorageError};
 use crate::model::{Pair, Price};
 use crate::schema::prices::dsl::*;
+use diesel::prelude::*;
+use diesel::replace_into;
+use std::sync::Arc;
 
-/// Record of an account state on the blockchain.
-#[derive(Queryable)]
-pub struct PriceRecord {
-    pub base: String,
-    pub quote: String,
-    pub bid: f64,
-    pub ask: f64,
+pub mod models {
+    /// Record of an account state on the blockchain.
+    #[derive(Queryable)]
+    pub struct Price {
+        pub base: String,
+        pub quote: String,
+        pub bid: f64,
+        pub ask: f64,
+    }
 }
+
+/// A repository to set and get prices of pairs.
+#[async_trait]
+pub trait PriceRepository {
+    /// It takes a pair and return the price if found in the storage.
+    async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError>;
+
+    /// It takes a price and insert or update the price in the storage.
+    async fn set_price(&self, price: &Price) -> Result<(), StorageError>;
+}
+
+pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
 
 /// A repository for prices using SQLite as a database engine.
 #[derive(Clone)]
@@ -32,7 +45,7 @@ impl PriceRepository for SqlitePriceRepository {
     async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError> {
         let filter = base.eq(pair.base().to_string());
 
-        let record: PriceRecord = self
+        let record: models::Price = self
             .pool
             .exec(|mut conn| prices.filter(filter).first(&mut conn))
             .await?;

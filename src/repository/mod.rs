@@ -1,24 +1,50 @@
-pub mod account;
-pub mod block;
-pub mod price;
-pub mod status;
+mod account;
+mod block;
+mod price;
+mod status;
 
-use self::account::AccountRepository;
-use self::block::BlockRepository;
-use self::status::StatusRepository;
-use crate::model::{Pair, Price};
 use axum::http::StatusCode;
 use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::path::Path;
-use std::sync::Arc;
 
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+pub use account::{AccountRepository, DynAccountRepository, SqliteAccountRepository};
+pub use block::{BlockRepository, DynBlockRepository, SqliteBlockRepository};
+pub use price::{DynPriceRepository, PriceRepository, SqlitePriceRepository};
+pub use status::{DynStatusRepository, SqliteStatusRepository, StatusRepository};
 
+#[cfg(test)]
+pub use account::MockAccountRepository;
+
+#[cfg(test)]
+pub use block::MockBlockRepository;
+
+#[cfg(test)]
+pub use price::MockPriceRepository;
+
+#[cfg(test)]
+pub use status::MockStatusRepository;
+
+/// Re-import of the records of the different repository.
+pub mod models {
+    pub use super::account::models::*;
+    pub use super::block::models::*;
+    pub use super::price::models::*;
+    pub use super::status::models::*;
+}
+
+/// A embedding of the migrations of the application to package them alongside
+/// the binary.
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+
+/// An alias of the pooled connection from the r2d2 crate for SQLite.
 type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
 
+pub type Result<T> = std::result::Result<T, StorageError>;
+
+/// A generic error for the implementations of the different repositories.
 #[derive(Debug)]
 pub enum StorageError {
     Pool(r2d2::Error),
@@ -72,7 +98,7 @@ impl AsyncPool {
 
     /// Provide the migrations within the application so that it can be called
     /// on startup (or for tests).
-    pub async fn run_migrations(&self) -> Result<(), StorageError> {
+    pub async fn run_migrations(&self) -> Result<()> {
         let mut conn = self.get_conn().await?;
 
         conn.run_pending_migrations(MIGRATIONS)
@@ -81,11 +107,11 @@ impl AsyncPool {
         Ok(())
     }
 
-    pub async fn get_conn(&self) -> Result<Connection, StorageError> {
+    pub async fn get_conn(&self) -> Result<Connection> {
         tokio::task::block_in_place(|| self.pool.get().map_err(StorageError::from))
     }
 
-    pub async fn exec<F, T>(&self, stmt: F) -> Result<T, StorageError>
+    pub async fn exec<F, T>(&self, stmt: F) -> Result<T>
     where
         F: FnOnce(Connection) -> QueryResult<T> + Send + 'static,
         T: Send + 'static,
@@ -97,21 +123,3 @@ impl AsyncPool {
         })
     }
 }
-
-pub type DynAccountRepository = Arc<dyn AccountRepository + Send + Sync>;
-
-/// A repository to set and get prices of pairs.
-#[async_trait]
-pub trait PriceRepository {
-    /// It takes a pair and return the price if found in the storage.
-    async fn get_price(&self, pair: &Pair) -> Result<Price, StorageError>;
-
-    /// It takes a price and insert or update the price in the storage.
-    async fn set_price(&self, price: &Price) -> Result<(), StorageError>;
-}
-
-pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;
-
-pub type DynBlockRepository = Arc<dyn BlockRepository + Sync + Send>;
-
-pub type DynStatusRepository = Arc<dyn StatusRepository + Sync + Send>;

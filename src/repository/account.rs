@@ -4,10 +4,9 @@ use super::{AsyncPool, StorageError};
 use crate::model::{Account, Reward};
 use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
+use std::sync::Arc;
 
-pub use records::{NewAccount, NewReward, RewardKind};
-
-pub mod records {
+pub mod models {
     use crate::schema::account_rewards;
     use crate::schema::accounts;
     use diesel::backend;
@@ -95,7 +94,7 @@ pub trait AccountRepository {
 
     /// It creates or updates an existing account using the address as the
     /// identifier.
-    async fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
+    async fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError>;
 
     /// It returns the list of rewards known for an account using the address to
     /// identity it.
@@ -103,8 +102,11 @@ pub trait AccountRepository {
 
     /// It creates an account reward if it does not exist already. The reward is
     /// identified by the account, the block and its kind.
-    async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError>;
+    async fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError>;
 }
+
+/// An alias of a singleton of an account repository shared in the application.
+pub type DynAccountRepository = Arc<dyn AccountRepository + Send + Sync>;
 
 /// Provide storage API to read and write accounts.
 pub struct SqliteAccountRepository {
@@ -124,7 +126,7 @@ impl AccountRepository for SqliteAccountRepository {
     async fn get_account(&self, addr: &str) -> Result<Account, StorageError> {
         let addr = addr.to_string();
 
-        let record: records::Account = self
+        let record: models::Account = self
             .pool
             .exec(|mut conn| accounts.filter(address.eq(addr)).first(&mut conn))
             .await?;
@@ -132,7 +134,7 @@ impl AccountRepository for SqliteAccountRepository {
         Ok(Account::from(record))
     }
 
-    async fn set_account(&self, account: NewAccount) -> Result<(), StorageError> {
+    async fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(accounts)
@@ -150,7 +152,7 @@ impl AccountRepository for SqliteAccountRepository {
     async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError> {
         let account_id = account.get_id();
 
-        let res: Vec<records::Reward> = self
+        let res: Vec<models::Reward> = self
             .pool
             .exec(move |mut conn| {
                 reward_dsl::account_rewards
@@ -162,7 +164,7 @@ impl AccountRepository for SqliteAccountRepository {
         Ok(res.into_iter().map(Reward::from).collect())
     }
 
-    async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError> {
+    async fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(reward_dsl::account_rewards)
@@ -185,9 +187,9 @@ impl AccountRepository for SqliteAccountRepository {
 mockall::mock! {
     pub AccountRepository {
         pub fn get_account(&self, addr: &str) -> Result<Account, StorageError>;
-        pub fn set_account(&self, account: NewAccount) -> Result<(), StorageError>;
+        pub fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError>;
         pub fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>, StorageError>;
-        pub fn set_reward(&self, reward: NewReward) -> Result<(), StorageError>;
+        pub fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError>;
     }
 }
 
@@ -198,7 +200,7 @@ impl AccountRepository for MockAccountRepository {
         self.get_account(addr)
     }
 
-    async fn set_account(&self, account: NewAccount) -> Result<(), StorageError> {
+    async fn set_account(&self, account: models::NewAccount) -> Result<(), StorageError> {
         self.set_account(account)
     }
 
@@ -206,7 +208,7 @@ impl AccountRepository for MockAccountRepository {
         self.get_rewards(account)
     }
 
-    async fn set_reward(&self, reward: NewReward) -> Result<(), StorageError> {
+    async fn set_reward(&self, reward: models::NewReward) -> Result<(), StorageError> {
         self.set_reward(reward)
     }
 }
@@ -214,7 +216,6 @@ impl AccountRepository for MockAccountRepository {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::repository::account::records::Account as AccountRecord;
     use crate::repository::AsyncPool;
 
     #[tokio::test(flavor = "multi_thread")]
@@ -222,7 +223,7 @@ mod integration_tests {
         let pool = AsyncPool::new(":memory:");
         pool.run_migrations().await.unwrap();
 
-        let expect = AccountRecord {
+        let expect = models::Account {
             id: 1,
             address: ":address:".into(),
             available_amount: "250".into(),
@@ -230,7 +231,7 @@ mod integration_tests {
             lottery_power: 0.096,
         };
 
-        let account = NewAccount {
+        let account = models::NewAccount {
             address: expect.address.clone(),
             available_amount: expect.available_amount.clone(),
             staked_amount: expect.staked_amount.clone(),
@@ -256,7 +257,7 @@ mod integration_tests {
         let repository = SqliteAccountRepository::new(pool);
 
         repository
-            .set_account(NewAccount {
+            .set_account(models::NewAccount {
                 address: ":address:".to_string(),
                 available_amount: "0".to_string(),
                 staked_amount: "0".to_string(),
@@ -268,23 +269,23 @@ mod integration_tests {
         let account = repository.get_account(":address:").await.unwrap();
 
         repository
-            .set_reward(NewReward {
+            .set_reward(models::NewReward {
                 account_id: account.get_id(),
                 block_hash: ":hash:".to_string(),
                 amount: "0.125".to_string(),
                 epoch_ms: 0,
-                kind: RewardKind::Baker,
+                kind: models::RewardKind::Baker,
             })
             .await
             .unwrap();
 
         repository
-            .set_reward(NewReward {
+            .set_reward(models::NewReward {
                 account_id: account.get_id(),
                 block_hash: ":hash:".to_string(),
                 amount: "0.525".to_string(),
                 epoch_ms: 0,
-                kind: RewardKind::TransactionFee,
+                kind: models::RewardKind::TransactionFee,
             })
             .await
             .unwrap();

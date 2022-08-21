@@ -2,10 +2,9 @@ use super::{AsyncPool, StorageError};
 use crate::model::Status;
 use crate::schema::statuses::dsl::*;
 use diesel::prelude::*;
+use std::sync::Arc;
 
-pub use records::{NewStatus, NodeStatusJson, ResourceStatusJson};
-
-pub mod records {
+pub mod models {
     use crate::schema::statuses;
     use diesel::backend;
     use diesel::deserialize as de;
@@ -89,10 +88,12 @@ pub mod records {
 pub trait StatusRepository {
     async fn get_last_report(&self) -> Result<Status, StorageError>;
 
-    async fn report(&self, status: NewStatus) -> Result<(), StorageError>;
+    async fn report(&self, status: models::NewStatus) -> Result<(), StorageError>;
 
     async fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError>;
 }
+
+pub type DynStatusRepository = Arc<dyn StatusRepository + Sync + Send>;
 
 pub struct SqliteStatusRepository {
     pool: AsyncPool,
@@ -107,7 +108,7 @@ impl SqliteStatusRepository {
 #[async_trait]
 impl StatusRepository for SqliteStatusRepository {
     async fn get_last_report(&self) -> Result<Status, StorageError> {
-        let res: records::Status = self
+        let res: models::Status = self
             .pool
             .exec(|mut conn| statuses.order_by(timestamp_ms.desc()).first(&mut conn))
             .await?;
@@ -115,7 +116,7 @@ impl StatusRepository for SqliteStatusRepository {
         Ok(Status::from(res))
     }
 
-    async fn report(&self, status: NewStatus) -> Result<(), StorageError> {
+    async fn report(&self, status: models::NewStatus) -> Result<(), StorageError> {
         self.pool
             .exec(move |mut conn| {
                 diesel::insert_into(statuses)
@@ -153,7 +154,7 @@ impl StatusRepository for SqliteStatusRepository {
 mockall::mock! {
     pub StatusRepository {
         pub fn get_last_report(&self) -> Result<Status, StorageError>;
-        pub fn report(&self, status: NewStatus) -> Result<(), StorageError>;
+        pub fn report(&self, status: models::NewStatus) -> Result<(), StorageError>;
         pub fn garbage_collect(&self, after_nth: i64) -> Result<(), StorageError>;
     }
 }
@@ -165,7 +166,7 @@ impl StatusRepository for MockStatusRepository {
         self.get_last_report()
     }
 
-    async fn report(&self, status: NewStatus) -> Result<(), StorageError> {
+    async fn report(&self, status: models::NewStatus) -> Result<(), StorageError> {
         self.report(status)
     }
 
@@ -186,14 +187,14 @@ mod integration_tests {
 
         let repository = SqliteStatusRepository::new(pool);
 
-        let new_status = NewStatus {
-            resources: ResourceStatusJson {
+        let new_status = models::NewStatus {
+            resources: models::ResourceStatusJson {
                 avg_cpu_load: None,
                 mem_free: None,
                 mem_total: None,
                 uptime_secs: None,
             },
-            node: Some(NodeStatusJson {
+            node: Some(models::NodeStatusJson {
                 node_id: Some("test".to_string()),
                 baker_id: Some(8343),
                 is_baker_committee: true,
@@ -222,8 +223,8 @@ mod integration_tests {
         let repository = SqliteStatusRepository::new(pool.clone());
 
         // Create two reports.
-        let first_report = NewStatus {
-            resources: ResourceStatusJson {
+        let first_report = models::NewStatus {
+            resources: models::ResourceStatusJson {
                 avg_cpu_load: None,
                 mem_free: None,
                 mem_total: None,
@@ -235,8 +236,8 @@ mod integration_tests {
 
         assert!(matches!(repository.report(first_report).await, Ok(_)));
 
-        let second_report = NewStatus {
-            resources: ResourceStatusJson {
+        let second_report = models::NewStatus {
+            resources: models::ResourceStatusJson {
                 avg_cpu_load: None,
                 mem_free: None,
                 mem_total: None,

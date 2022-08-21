@@ -1,7 +1,6 @@
 use super::{AppError, AsyncJob};
 use crate::client::DynNodeClient;
-use crate::repository::account::NewAccount;
-use crate::repository::DynAccountRepository;
+use crate::repository::{models, DynAccountRepository};
 use rust_decimal::Decimal;
 
 pub struct RefreshAccountsJob {
@@ -45,7 +44,7 @@ impl RefreshAccountsJob {
         let baker = self.client.get_baker(&last_block.hash, address).await?;
 
         // 4. Finally the account is updated in the repository.
-        let mut new_account = NewAccount {
+        let mut new_account = models::NewAccount {
             address: address.into(),
             available_amount: (info.account_amount - staked).to_string(),
             staked_amount: staked.to_string(),
@@ -77,7 +76,7 @@ impl AsyncJob for RefreshAccountsJob {
 mod tests {
     use super::*;
     use crate::client::node::{AccountInfo, Baker, Block, MockNodeClient};
-    use crate::repository::account::MockAccountRepository;
+    use crate::repository::MockAccountRepository;
     use mockall::predicate::*;
     use rust_decimal_macros::dec;
     use std::sync::Arc;

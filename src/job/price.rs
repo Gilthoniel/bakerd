@@ -45,12 +45,11 @@ impl AsyncJob for PriceRefresher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Pair, Price};
+    use crate::repository::MockPriceRepository;
     use mockall::mock;
     use mockall::predicate::*;
     use std::sync::Arc;
-
-    use crate::model::{Pair, Price};
-    use crate::repository::price::MockPriceRepository;
 
     mock! {
         pub Client {

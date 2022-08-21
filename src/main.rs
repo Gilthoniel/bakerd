@@ -1,19 +1,14 @@
+use crate::config::Config;
+use crate::controller::AppError;
+use crate::job::Jobber;
+use crate::repository::*;
 use axum::{extract::Extension, routing::get, Router};
+use clap::Parser;
 use env_logger::Env;
 use std::collections::HashMap;
 use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
-use config::Config;
-use controller::AppError;
-use job::Jobber;
-use repository::status::SqliteStatusRepository;
-use repository::{
-    account::SqliteAccountRepository as AccountRepository, block::SqliteBlockRepository,
-    price::SqlitePriceRepository as PriceRepository, AsyncPool, DynAccountRepository,
-    DynBlockRepository, DynPriceRepository, DynStatusRepository,
-};
-use clap::Parser;
 
 #[macro_use]
 extern crate diesel;
@@ -43,8 +38,8 @@ struct Context {
 impl Context {
     fn new(pool: &AsyncPool) -> Self {
         Self {
-            account_repository: Arc::new(AccountRepository::new(pool.clone())),
-            price_repository: Arc::new(PriceRepository::new(pool.clone())),
+            account_repository: Arc::new(SqliteAccountRepository::new(pool.clone())),
+            price_repository: Arc::new(SqlitePriceRepository::new(pool.clone())),
             block_repository: Arc::new(SqliteBlockRepository::new(pool.clone())),
             status_repository: Arc::new(SqliteStatusRepository::new(pool.clone())),
         }
@@ -54,11 +49,11 @@ impl Context {
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-  #[clap(short, long, value_parser, default_value = "config.yaml")]
-  config_file: String,
+    #[clap(short, long, value_parser, default_value = "config.yaml")]
+    config_file: String,
 
-  #[clap(short, long, value_parser, default_value = "data.db")]
-  data_dir: String,
+    #[clap(short, long, value_parser, default_value = "data.db")]
+    data_dir: String,
 }
 
 #[tokio::main]
@@ -146,7 +141,7 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
     scheduler.start()
 }
 
-async fn prepare_context(data_dir: &str) -> Result<Context, AppError> {
+async fn prepare_context(data_dir: &str) -> std::result::Result<Context, AppError> {
     let pool = AsyncPool::new(data_dir);
 
     // Always run the migration to make sure the application is ready to use the
@@ -185,7 +180,7 @@ async fn run_server(
     cfg: &Config,
     data_dir: &str,
     termination: impl std::future::Future<Output = ()>,
-) -> Result<(), AppError> {
+) -> std::result::Result<(), AppError> {
     let ctx = prepare_context(data_dir).await?;
 
     let jobber = prepare_jobs(cfg, &ctx).await;
