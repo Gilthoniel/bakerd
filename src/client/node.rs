@@ -344,66 +344,19 @@ mod integration_tests {
     type PeerStatsResponse = std::result::Result<Response<ccd::PeerStatsResponse>, Status>;
 
     mockall::mock! {
-        pub Service {
-            fn node_info(&self, request: Request<ccd::Empty>) -> NodeInfoResponse;
+        pub Service {}
 
-            fn peer_uptime(&self, request: Request<ccd::Empty>) -> NumberResponse;
-
-            fn peer_stats(&self, request: Request<ccd::PeersRequest>) -> PeerStatsResponse;
-
-            fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse;
-
-            fn get_blocks_at_height(&self, request: Request<ccd::BlockHeight>) -> JsonResponse;
-
-            fn get_block_info(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
-
-            fn get_block_summary(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
-
-            fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> JsonResponse;
-
-            fn get_birk_parameters(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
-        }
-    }
-
-    #[tonic::async_trait]
-    impl ccd::p2p_server::P2p for MockService {
-        async fn node_info(&self, request: Request<ccd::Empty>) -> NodeInfoResponse {
-            self.node_info(request)
-        }
-
-        async fn peer_uptime(&self, request: Request<ccd::Empty>) -> NumberResponse {
-            self.peer_uptime(request)
-        }
-
-        async fn peer_stats(&self, request: Request<ccd::PeersRequest>) -> PeerStatsResponse {
-            self.peer_stats(request)
-        }
-
-        async fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse {
-            self.get_consensus_status(request)
-        }
-
-        async fn get_blocks_at_height(&self, request: Request<ccd::BlockHeight>) -> JsonResponse {
-            self.get_blocks_at_height(request)
-        }
-
-        async fn get_block_info(&self, request: Request<ccd::BlockHash>) -> JsonResponse {
-            self.get_block_info(request)
-        }
-
-        async fn get_block_summary(&self, request: Request<ccd::BlockHash>) -> JsonResponse {
-            self.get_block_summary(request)
-        }
-
-        async fn get_account_info(
-            &self,
-            request: Request<ccd::GetAddressInfoRequest>,
-        ) -> JsonResponse {
-            self.get_account_info(request)
-        }
-
-        async fn get_birk_parameters(&self, request: Request<ccd::BlockHash>) -> JsonResponse {
-            self.get_birk_parameters(request)
+        #[async_trait]
+        impl ccd::p2p_server::P2p for Service {
+            async fn node_info(&self, request: Request<ccd::Empty>) -> NodeInfoResponse;
+            async fn peer_uptime(&self, request: Request<ccd::Empty>) -> NumberResponse;
+            async fn peer_stats(&self, request: Request<ccd::PeersRequest>) -> PeerStatsResponse;
+            async fn get_consensus_status(&self, request: Request<ccd::Empty>) -> JsonResponse;
+            async fn get_blocks_at_height(&self, request: Request<ccd::BlockHeight>) -> JsonResponse;
+            async fn get_block_info(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
+            async fn get_block_summary(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
+            async fn get_account_info(&self, request: Request<ccd::GetAddressInfoRequest>) -> JsonResponse;
+            async fn get_birk_parameters(&self, request: Request<ccd::BlockHash>) -> JsonResponse;
         }
     }
 
