@@ -1,5 +1,6 @@
+use crate::controller::AppError;
 use axum::{
-    http::{self, Request, StatusCode},
+    http::{self, Request},
     middleware::Next,
     response::Response,
 };
@@ -11,7 +12,7 @@ pub async fn authentication<B>(
     req: Request<B>,
     next: Next<B>,
     secret: Arc<String>,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, AppError> {
     let header = req
         .headers()
         .get(http::header::AUTHORIZATION)
@@ -19,7 +20,7 @@ pub async fn authentication<B>(
 
     match header {
         Some(header) if token_is_valid(header, &secret) => Ok(next.run(req).await),
-        _ => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(AppError::Unauthorized),
     }
 }
 

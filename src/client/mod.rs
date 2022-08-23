@@ -3,6 +3,7 @@ pub mod node;
 
 use crate::model::{Pair, Price};
 use node::NodeClient;
+use std::fmt;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -11,6 +12,18 @@ pub enum Error {
     Grpc(tonic::Status),
     Json(serde_json::Error),
 }
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Http(e) => write!(f, "http client error: {}", e),
+            Self::Grpc(e) => write!(f, "grpc client error: {}", e),
+            Self::Json(e) => write!(f, "client error: encoding: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {

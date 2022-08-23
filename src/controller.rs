@@ -1,4 +1,3 @@
-use crate::client::Error as ClientError;
 use crate::model::{Account, Price, Reward, Status};
 use crate::repository::{
     DynAccountRepository, DynPriceRepository, DynStatusRepository, RepositoryError,
@@ -9,37 +8,38 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use log::error;
+use serde_json::json;
 
 /// An global definition of errors for the application.
 #[derive(Debug)]
 pub enum AppError {
-    Repository(RepositoryError),
-    Client(ClientError),
+    Unauthorized,
+    AccountNotFound,
+    PriceNotFound,
+    Internal,
 }
 
 impl IntoResponse for AppError {
     /// It transforms the error into a human-readable response. Each error has a
     /// status and a message, or a default internal server error.
     fn into_response(self) -> Response {
-        match self {
-            Self::Repository(e) => e.status_code(),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "node error"),
-        }
-        .into_response()
-    }
-}
+        let (status, message) = match self {
+            Self::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                "authentication token is missing or invalid",
+            ),
+            Self::AccountNotFound => (StatusCode::NOT_FOUND, "account does not exist"),
+            Self::PriceNotFound => (StatusCode::NOT_FOUND, "price does not exist"),
+            Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
+        };
 
-impl From<RepositoryError> for AppError {
-    /// It builds an application error from a repository error.
-    fn from(e: RepositoryError) -> Self {
-        Self::Repository(e)
-    }
-}
+        let body = Json(json!({
+            "code": status.as_u16(),
+            "error": message,
+        }));
 
-impl From<ClientError> for AppError {
-    /// It builds an application error from a client error.
-    fn from(e: ClientError) -> Self {
-        Self::Client(e)
+        (status, body).into_response()
     }
 }
 
@@ -47,7 +47,10 @@ impl From<ClientError> for AppError {
 pub async fn get_status(
     Extension(repository): Extension<DynStatusRepository>,
 ) -> Result<Json<Status>, AppError> {
-    let status = repository.get_last_report().await?;
+    let status = repository
+        .get_last_report()
+        .await
+        .map_err(map_internal_error)?;
 
     Ok(status.into())
 }
@@ -57,7 +60,7 @@ pub async fn get_account(
     Path(addr): Path<String>,
     Extension(repo): Extension<DynAccountRepository>,
 ) -> Result<Json<Account>, AppError> {
-    let account = repo.get_account(&addr).await?;
+    let account = repo.get_account(&addr).await.map_err(map_account_error)?;
 
     Ok(account.into())
 }
@@ -67,9 +70,15 @@ pub async fn get_account_rewards(
     Path(addr): Path<String>,
     Extension(repository): Extension<DynAccountRepository>,
 ) -> Result<Json<Vec<Reward>>, AppError> {
-    let account = repository.get_account(&addr).await?;
+    let account = repository
+        .get_account(&addr)
+        .await
+        .map_err(map_account_error)?;
 
-    let rewards = repository.get_rewards(&account).await?;
+    let rewards = repository
+        .get_rewards(&account)
+        .await
+        .map_err(map_internal_error)?;
 
     Ok(rewards.into())
 }
@@ -84,9 +93,36 @@ pub async fn get_price(
     // empty pair is returned.
     let parts = pair.as_str().split_once(':').unwrap_or(("", ""));
 
-    let price = repository.get_price(&parts.into()).await?;
+    let price = repository
+        .get_price(&parts.into())
+        .await
+        .map_err(|e| match e {
+            RepositoryError::NotFound => AppError::PriceNotFound,
+            _ => {
+                error!("unable to find a price: {}", e);
+
+                AppError::Internal
+            }
+        })?;
 
     Ok(price.into())
+}
+
+fn map_internal_error(e: RepositoryError) -> AppError {
+    error!("internal server error: {}", e);
+
+    AppError::Internal
+}
+
+fn map_account_error(e: RepositoryError) -> AppError {
+    match e {
+        RepositoryError::NotFound => AppError::AccountNotFound,
+        _ => {
+            error!("unable to read the account: {}", e);
+
+            AppError::Internal
+        }
+    }
 }
 
 #[cfg(test)]
@@ -97,25 +133,25 @@ mod tests {
         models, MockAccountRepository, MockPriceRepository, MockStatusRepository,
     };
     use axum::http::StatusCode;
-    use diesel::result::Error as DriverError;
     use mockall::predicate::*;
     use std::sync::Arc;
-    use tonic::Status;
+    use diesel::result::Error;
 
     #[test]
     fn test_app_errors() {
         assert_eq!(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::from(ClientError::Grpc(Status::already_exists("fake")))
-                .into_response()
-                .status(),
+            StatusCode::NOT_FOUND,
+            AppError::AccountNotFound.into_response().status(),
         );
 
         assert_eq!(
             StatusCode::NOT_FOUND,
-            AppError::from(RepositoryError::Driver(DriverError::NotFound))
-                .into_response()
-                .status(),
+            AppError::PriceNotFound.into_response().status(),
+        );
+
+        assert_eq!(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::Internal.into_response().status(),
         );
     }
 
@@ -140,6 +176,20 @@ mod tests {
         let res = get_status(Extension(Arc::new(repository))).await;
 
         assert!(matches!(res, Ok(_)));
+    }
+
+    #[tokio::test]
+    async fn test_status_internal_error() {
+        let mut repository = MockStatusRepository::new();
+
+        repository
+            .expect_get_last_report()
+            .times(1)
+            .returning(|| Err(RepositoryError::NotFound));
+
+        let res = get_status(Extension(Arc::new(repository))).await;
+
+        assert!(matches!(res, Err(AppError::Internal)));
     }
 
     #[tokio::test]
@@ -179,13 +229,28 @@ mod tests {
             .expect_get_account()
             .with(eq(addr))
             .times(1)
-            .returning(|_| Err(RepositoryError::Driver(DriverError::NotFound)));
+            .returning(|_| Err(RepositoryError::NotFound));
 
         let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await;
 
-        assert!(
-            matches!(res, Err(AppError::Repository(e)) if e.status_code().0 == StatusCode::NOT_FOUND)
-        );
+        assert!(matches!(res, Err(AppError::AccountNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_get_account_internal_error() {
+        let mut repository = MockAccountRepository::new();
+
+        let addr = "some-address";
+
+        repository
+            .expect_get_account()
+            .with(eq(addr))
+            .times(1)
+            .returning(|_| Err(RepositoryError::Faillable(Box::new(Error::AlreadyInTransaction))));
+
+        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await;
+
+        assert!(matches!(res, Err(AppError::Internal)));
     }
 
     #[tokio::test]
@@ -261,12 +326,10 @@ mod tests {
             .expect_get_price()
             .with(eq(pair))
             .times(1)
-            .returning(move |_| Err(RepositoryError::Driver(DriverError::NotFound)));
+            .returning(move |_| Err(RepositoryError::NotFound));
 
         let res = get_price(Path("".into()), Extension(Arc::new(repository))).await;
 
-        assert!(
-            matches!(res, Err(AppError::Repository(e)) if e.status_code().0 == StatusCode::NOT_FOUND)
-        );
+        assert!(matches!(res, Err(AppError::PriceNotFound)));
     }
 }

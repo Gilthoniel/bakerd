@@ -1,5 +1,5 @@
-use super::{AppError, AsyncJob, Status};
-use crate::client::DynNodeClient;
+use super::{AsyncJob, Status};
+use crate::client::{DynNodeClient, Error as ClientError};
 use crate::repository::{models, DynStatusRepository};
 use chrono::Utc;
 use log::error;
@@ -75,7 +75,7 @@ impl StatusChecker {
 
     /// It fetches the node for multiple statistics and build the JSON that will be
     /// store for the node status.
-    async fn get_node_status(&self) -> Result<models::NodeStatusJson, AppError> {
+    async fn get_node_status(&self) -> Result<models::NodeStatusJson, ClientError> {
         let node_info = self.client.get_node_info().await?;
 
         let uptime = self.client.get_node_uptime().await?;

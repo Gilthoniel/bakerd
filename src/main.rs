@@ -1,5 +1,4 @@
 use crate::config::Config;
-use crate::controller::AppError;
 use crate::job::Jobber;
 use crate::repository::*;
 use axum::{extract::Extension, routing::get, Router};
@@ -148,7 +147,7 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
     scheduler.start()
 }
 
-async fn prepare_context(data_dir: &str) -> std::result::Result<Context, AppError> {
+async fn prepare_context(data_dir: &str) -> std::result::Result<Context, PoolError> {
     let pool = AsyncPool::new(data_dir);
 
     // Always run the migration to make sure the application is ready to use the
@@ -187,7 +186,7 @@ async fn run_server(
     cfg: &Config,
     data_dir: &str,
     termination: impl std::future::Future<Output = ()>,
-) -> std::result::Result<(), AppError> {
+) -> std::result::Result<(), PoolError> {
     let ctx = prepare_context(data_dir).await?;
 
     let jobber = prepare_jobs(cfg, &ctx).await;

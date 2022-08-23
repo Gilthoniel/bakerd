@@ -1,7 +1,8 @@
-use super::{AsyncPool, Result};
+use super::{AsyncPool, PoolError, RepositoryError, Result};
 use crate::model::Block;
 use crate::schema::blocks::dsl::*;
 use diesel::prelude::*;
+use diesel::result::Error;
 use std::sync::Arc;
 
 pub mod models {
@@ -59,7 +60,11 @@ impl BlockRepository for SqliteBlockRepository {
         let record: models::Block = self
             .pool
             .exec(|mut conn| blocks.order_by(height.desc()).first(&mut conn))
-            .await?;
+            .await
+            .map_err(|e| match e {
+                PoolError::Driver(Error::NotFound) => RepositoryError::NotFound,
+                _ => RepositoryError::from(e),
+            })?;
 
         Ok(Block::from(record))
     }
@@ -93,7 +98,6 @@ impl BlockRepository for SqliteBlockRepository {
 mod integration_tests {
     use super::*;
     use crate::repository::{AsyncPool, RepositoryError};
-    use diesel::result::Error;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_store_and_get_block() {
@@ -128,7 +132,7 @@ mod integration_tests {
 
         assert!(matches!(
             repository.get_last_block().await,
-            Err(e) if matches!(&e, RepositoryError::Driver(d) if matches!(d, Error::NotFound)),
+            Err(RepositoryError::NotFound),
         ));
     }
 }

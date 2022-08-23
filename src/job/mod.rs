@@ -3,7 +3,6 @@ pub mod block;
 pub mod price;
 pub mod status;
 
-use crate::controller::AppError;
 use cron::Schedule;
 use log::{error, info, warn};
 use std::collections::HashMap;
@@ -16,7 +15,7 @@ use tokio::time;
 const SCHEDULER_TIMEOUT: Duration = Duration::from_millis(10000);
 
 /// A result of a job execution.
-type Status = std::result::Result<(), AppError>;
+type Status = std::result::Result<(), Box<dyn std::error::Error>>;
 
 #[async_trait]
 pub trait AsyncJob: Sync + Send {
@@ -110,7 +109,7 @@ impl Scheduler {
 
                 match job.execute().await {
                     Ok(_) => info!("job [{}] has finished", ctx.name),
-                    Err(e) => error!("job [{}] has finished with error {:?}", ctx.name, e),
+                    Err(e) => error!("job [{}] has finished with an error: {}", ctx.name, e),
                 }
             }
         });

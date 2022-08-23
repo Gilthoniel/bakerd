@@ -1,8 +1,9 @@
-use super::{AsyncPool, Result};
+use super::{AsyncPool, PoolError, RepositoryError, Result};
 use crate::model::{Pair, Price};
 use crate::schema::prices::dsl::*;
 use diesel::prelude::*;
 use diesel::replace_into;
+use diesel::result::Error;
 use std::sync::Arc;
 
 pub mod models {
@@ -57,7 +58,11 @@ impl PriceRepository for SqlitePriceRepository {
                     .filter(quote.eq(quote_symbol))
                     .first(&mut conn)
             })
-            .await?;
+            .await
+            .map_err(|e| match e {
+                PoolError::Driver(Error::NotFound) => RepositoryError::NotFound,
+                _ => RepositoryError::from(e),
+            })?;
 
         Ok(Price::from(record))
     }
@@ -122,6 +127,6 @@ mod integration_tests {
 
         let res = repository.get_price(&Pair::from(("CCD", "USD"))).await;
 
-        assert!(matches!(res, Err(RepositoryError::Driver(_))));
+        assert!(matches!(res, Err(RepositoryError::NotFound)));
     }
 }

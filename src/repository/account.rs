@@ -1,8 +1,9 @@
-use super::{AsyncPool, Result};
+use super::{AsyncPool, PoolError, RepositoryError, Result};
 use crate::model::{Account, Reward};
 use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
 use diesel::prelude::*;
+use diesel::result::Error;
 use std::sync::Arc;
 
 pub mod models {
@@ -136,7 +137,11 @@ impl AccountRepository for SqliteAccountRepository {
         let record: models::Account = self
             .pool
             .exec(|mut conn| accounts.filter(address.eq(addr)).first(&mut conn))
-            .await?;
+            .await
+            .map_err(|e| match e {
+                PoolError::Driver(Error::NotFound) => RepositoryError::NotFound,
+                _ => RepositoryError::from(e),
+            })?;
 
         Ok(Account::from(record))
     }
