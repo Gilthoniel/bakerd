@@ -148,7 +148,7 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
 }
 
 async fn prepare_context(data_dir: &str) -> std::result::Result<Context, PoolError> {
-    let pool = AsyncPool::new(data_dir);
+    let pool = AsyncPool::open(data_dir)?;
 
     // Always run the migration to make sure the application is ready to use the
     // storage.
@@ -239,7 +239,9 @@ mod integration_tests {
 
         let cfg = Config::from_reader(&mut values).unwrap();
 
-        let jobber = prepare_jobs(&cfg, &Context::new(&AsyncPool::new(":memory:"))).await;
+        let pool = AsyncPool::open(":memory:").unwrap();
+
+        let jobber = prepare_jobs(&cfg, &Context::new(&pool)).await;
 
         jobber.shutdown().await;
     }

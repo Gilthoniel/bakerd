@@ -8,7 +8,6 @@ use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::fmt;
-use std::path::Path;
 
 pub use self::{account::*, block::*, price::*, status::*};
 
@@ -98,18 +97,15 @@ pub struct AsyncPool {
 impl AsyncPool {
     /// It creates a new asynchronous pool using the path to open the file
     /// database, or to create an in-memory database using `:memory:`.
-    pub fn new(path: &str) -> Self {
-        let p = Path::new(path);
-
-        // TODO: remove unwrap.
-        let manager = ConnectionManager::new(p.to_str().expect("invalid data path"));
+    pub fn open(path: &str) -> PoolResult<Self> {
+        let manager = ConnectionManager::new(path);
 
         let pool = r2d2::Pool::builder()
             .max_size(1) // sqlite does not support multiple writers.
             .build(manager)
-            .expect("failed to initiate the pool");
+            .map_err(|e| PoolError::Pool(e))?;
 
-        Self { pool }
+        Ok(Self { pool })
     }
 
     /// Provide the migrations within the application so that it can be called

@@ -101,7 +101,8 @@ mod integration_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_store_and_get_block() {
-        let pool = AsyncPool::new(":memory:");
+        let pool = AsyncPool::open(":memory:").unwrap();
+
         pool.run_migrations().await.unwrap();
 
         let repository = SqliteBlockRepository::new(pool);
@@ -123,7 +124,8 @@ mod integration_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_garbage_collect() {
-        let pool = AsyncPool::new(":memory:");
+        let pool = AsyncPool::open(":memory:").unwrap();
+        
         pool.run_migrations().await.unwrap();
 
         let repository = SqliteBlockRepository::new(pool);

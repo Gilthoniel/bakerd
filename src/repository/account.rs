@@ -200,7 +200,8 @@ mod integration_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_account() {
-        let pool = AsyncPool::new(":memory:");
+        let pool = AsyncPool::open(":memory:").unwrap();
+
         pool.run_migrations().await.unwrap();
 
         let expect = models::Account {
@@ -231,7 +232,8 @@ mod integration_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_rewards() {
-        let pool = AsyncPool::new(":memory:");
+        let pool = AsyncPool::open(":memory:").unwrap();
+        
         pool.run_migrations().await.unwrap();
 
         let repository = SqliteAccountRepository::new(pool);

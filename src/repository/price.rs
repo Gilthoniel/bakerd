@@ -83,7 +83,7 @@ mod integration_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_set_price() {
-        let pool = AsyncPool::new(":memory:");
+        let pool = AsyncPool::open(":memory:").unwrap();
 
         pool.run_migrations().await.unwrap();
 
@@ -120,7 +120,8 @@ mod integration_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_price_not_found() {
-        let pool = AsyncPool::new(":memory:");
+        let pool = AsyncPool::open(":memory:").unwrap();
+        
         pool.run_migrations().await.unwrap();
 
         let repository = SqlitePriceRepository::new(pool);
