@@ -8,6 +8,7 @@ use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::fmt;
+use std::time::Duration;
 
 pub use self::{account::*, block::*, price::*, status::*};
 
@@ -21,6 +22,9 @@ pub mod models {
 /// A embedding of the migrations of the application to package them alongside
 /// the binary.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+
+const ERROR_PREFIX: &str = "repository error";
+const ERROR_NOT_FOUND: &str = "resource not found";
 
 /// An alias of the pooled connection from the r2d2 crate for SQLite.
 type Connection = r2d2::PooledConnection<ConnectionManager<SqliteConnection>>;
@@ -44,8 +48,8 @@ impl std::error::Error for RepositoryError {}
 impl fmt::Display for RepositoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotFound => write!(f, "resource not found"),
-            Self::Faillable(e) => write!(f, "repository error: {}", e),
+            Self::NotFound => write!(f, "{}", ERROR_NOT_FOUND),
+            Self::Faillable(e) => write!(f, "{}: {}", ERROR_PREFIX, e),
         }
     }
 }
@@ -56,8 +60,7 @@ impl From<PoolError> for RepositoryError {
     fn from(e: PoolError) -> Self {
         match e {
             PoolError::Driver(e) => RepositoryError::Faillable(Box::new(e)),
-            PoolError::Pool(e) => RepositoryError::Faillable(Box::new(e)),
-            PoolError::Migration(e) => RepositoryError::Faillable(e),
+            PoolError::Faillable(e) => RepositoryError::Faillable(e),
         }
     }
 }
@@ -67,16 +70,26 @@ impl From<PoolError> for RepositoryError {
 #[derive(Debug)]
 pub enum PoolError {
     Driver(DriverError),
-    Pool(r2d2::Error),
-    Migration(Box<dyn std::error::Error>),
+    Faillable(Box<dyn std::error::Error>),
+}
+
+impl From<r2d2::Error> for PoolError {
+    fn from(e: r2d2::Error) -> Self {
+        Self::Faillable(Box::new(e))
+    }
+}
+
+impl From<DriverError> for PoolError {
+    fn from(e: DriverError) -> Self {
+        Self::Driver(e)
+    }
 }
 
 impl fmt::Display for PoolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Driver(e) => write!(f, "driver error: {}", e),
-            Self::Pool(e) => write!(f, "pool error: {}", e),
-            Self::Migration(e) => write!(f, "migration error: {}", e),
+            Self::Faillable(e) => write!(f, "storage layer error: {}", e),
         }
     }
 }
@@ -98,12 +111,16 @@ impl AsyncPool {
     /// It creates a new asynchronous pool using the path to open the file
     /// database, or to create an in-memory database using `:memory:`.
     pub fn open(path: &str) -> PoolResult<Self> {
+        Self::open_with_timeout(path, Duration::from_secs(30))
+    }
+
+    fn open_with_timeout(path: &str, timeout: Duration) -> PoolResult<Self> {
         let manager = ConnectionManager::new(path);
 
         let pool = r2d2::Pool::builder()
             .max_size(1) // sqlite does not support multiple writers.
-            .build(manager)
-            .map_err(|e| PoolError::Pool(e))?;
+            .connection_timeout(timeout)
+            .build(manager)?;
 
         Ok(Self { pool })
     }
@@ -114,14 +131,14 @@ impl AsyncPool {
         let mut conn = self.get_conn().await?;
 
         conn.run_pending_migrations(MIGRATIONS)
-            .map_err(|e| PoolError::Migration(e))?;
+            .map_err(|e| PoolError::Faillable(e))?;
 
         Ok(())
     }
 
     /// It returns a pooled connection.
     pub async fn get_conn(&self) -> PoolResult<Connection> {
-        tokio::task::block_in_place(|| self.pool.get().map_err(|e| PoolError::Pool(e)))
+        Ok(tokio::task::block_in_place(|| self.pool.get())?)
     }
 
     /// It takes a list of statements to execute on a database connection.
@@ -131,9 +148,64 @@ impl AsyncPool {
         T: Send + 'static,
     {
         tokio::task::block_in_place(|| {
-            let conn = self.pool.get().map_err(|e| PoolError::Pool(e))?;
+            let conn = self.pool.get()?;
 
-            stmt(conn).map_err(|e| PoolError::Driver(e))
+            Ok(stmt(conn)?)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct FakeError;
+
+    impl fmt::Display for FakeError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "fake")
+        }
+    }
+
+    impl std::error::Error for FakeError {}
+
+    #[test]
+    fn test_repository_error() {
+        assert_eq!(
+            ERROR_NOT_FOUND.to_string(),
+            format!("{}", RepositoryError::NotFound)
+        );
+        assert_eq!(
+            format!("{}: fake", ERROR_PREFIX),
+            format!("{}", RepositoryError::Faillable(Box::new(FakeError {})))
+        );
+    }
+
+    #[test]
+    fn test_pool_error() {
+        assert_eq!(
+            format!("driver error: {}", DriverError::NotFound),
+            format!("{}", PoolError::from(DriverError::NotFound)),
+        );
+        assert_eq!(
+            format!("storage layer error: fake"),
+            format!("{}", PoolError::Faillable(Box::new(FakeError {}))),
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bad_connection() {
+        let pool = AsyncPool::open_with_timeout(":memory:", Duration::from_millis(100)).unwrap();
+
+        let _initial = pool.get_conn().await.unwrap();
+
+        // Second request for a connection will fail as we have maximum one.
+        let res = pool.get_conn().await;
+
+        assert!(matches!(
+            res.map_err(RepositoryError::from),
+            Err(RepositoryError::Faillable(_))
+        ));
     }
 }

@@ -125,7 +125,7 @@ mod integration_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_garbage_collect() {
         let pool = AsyncPool::open(":memory:").unwrap();
-        
+
         pool.run_migrations().await.unwrap();
 
         let repository = SqliteBlockRepository::new(pool);

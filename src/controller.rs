@@ -133,9 +133,9 @@ mod tests {
         models, MockAccountRepository, MockPriceRepository, MockStatusRepository,
     };
     use axum::http::StatusCode;
+    use diesel::result::Error;
     use mockall::predicate::*;
     use std::sync::Arc;
-    use diesel::result::Error;
 
     #[test]
     fn test_app_errors() {
@@ -246,7 +246,11 @@ mod tests {
             .expect_get_account()
             .with(eq(addr))
             .times(1)
-            .returning(|_| Err(RepositoryError::Faillable(Box::new(Error::AlreadyInTransaction))));
+            .returning(|_| {
+                Err(RepositoryError::Faillable(Box::new(
+                    Error::AlreadyInTransaction,
+                )))
+            });
 
         let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await;
 
