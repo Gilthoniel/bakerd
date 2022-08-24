@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 const EVENT_TAG_REWARD: &str = "PaydayAccountReward";
 
-const GC_OFFSET: i64 = 10_000;
+const GC_OFFSET: i64 = 500_000;
 
 pub struct BlockFetcher {
     client: DynNodeClient,
