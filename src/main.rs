@@ -5,7 +5,6 @@ use axum::{extract::Extension, routing::get, Router};
 use clap::Parser;
 use env_logger::Env;
 use std::collections::HashMap;
-use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -53,6 +52,19 @@ struct Args {
 
     #[clap(short, long, value_parser, default_value = "data.db")]
     data_dir: String,
+
+    #[clap(short, long, value_parser)]
+    secret_file: Option<String>,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Args {
+            config_file: "config.yaml".to_string(),
+            data_dir: "data.db".to_string(),
+            secret_file: None,
+        }
+    }
 }
 
 #[tokio::main]
@@ -63,13 +75,9 @@ async fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     #[cfg(test)]
-    let args = Args {
-        config_file: "config.yaml".to_string(),
-        data_dir: "data.db".to_string(),
-    };
+    let args = Args::default();
 
-    let mut file = File::open(args.config_file)?;
-    let cfg = Config::from_reader(&mut file)?;
+    let cfg = Config::from_file(&args.config_file)?;
 
     #[cfg(not(test))]
     let termination = async {
@@ -80,7 +88,7 @@ async fn main() -> std::io::Result<()> {
     #[cfg(test)]
     let termination = async {};
 
-    run_server(&cfg, &args.data_dir, termination).await.unwrap();
+    run_server(&cfg, &args, termination).await.unwrap();
 
     Ok(())
 }
@@ -158,10 +166,12 @@ async fn prepare_context(data_dir: &str) -> std::result::Result<Context, PoolErr
 }
 
 /// It creates an application and registers the different routes.
-async fn create_app(ctx: &Context, cfg: &Config) -> Router {
+async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
+    let secret = cfg.get_secret(args.secret_file.as_ref().map(|p| p.as_ref())).expect("unable to read secret file");
+
     // as a better security, the secret is only cloned once and shared between
     // the requests.
-    let secret = Arc::new(cfg.get_secret().clone());
+    let secret = Arc::new(secret.clone());
 
     Router::new()
         .route("/", get(controller::get_status))
@@ -184,15 +194,15 @@ async fn create_app(ctx: &Context, cfg: &Config) -> Router {
 /// The binding address is defined by the configuration.
 async fn run_server(
     cfg: &Config,
-    data_dir: &str,
+    args: &Args,
     termination: impl std::future::Future<Output = ()>,
 ) -> std::result::Result<(), PoolError> {
-    let ctx = prepare_context(data_dir).await?;
+    let ctx = prepare_context(&args.data_dir).await?;
 
     let jobber = prepare_jobs(cfg, &ctx).await;
 
     axum::Server::bind(cfg.get_listen_addr())
-        .serve(create_app(&ctx, &cfg).await.into_make_service())
+        .serve(create_app(&ctx, &cfg, args).await.into_make_service())
         .with_graceful_shutdown(termination)
         .await
         .unwrap();
@@ -211,6 +221,8 @@ mod integration_tests {
         http::{Request, StatusCode},
     };
     use std::env;
+    use std::fs::File;
+    use std::io::prelude::*;
     use tower::ServiceExt;
 
     /// It makes sure that the main function is running properly.
@@ -250,21 +262,31 @@ mod integration_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_run_server() {
         let cfg = Config::default();
+        let mut args = Args::default();
+        args.data_dir = ":memory:".to_string();
 
-        run_server(&cfg, ":memory:", async {}).await.unwrap();
+        run_server(&cfg, &args, async {}).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_account() {
-        let ctx = prepare_context(":memory:").await.unwrap();
+        let mut secret_file = env::temp_dir();
+        secret_file.push("secret.txt");
 
-        let app = create_app(&ctx, &Config::default()).await;
+        let mut file = File::create(secret_file.clone()).unwrap();
+        file.write_all(b"some-secret").unwrap();
+
+        let ctx = prepare_context(":memory:").await.unwrap();
+        let mut args = Args::default();
+        args.secret_file = secret_file.to_str().map(String::from);
+
+        let app = create_app(&ctx, &Config::default(), &args).await;
 
         let response = app
             .oneshot(
                 Request::builder()
                     .uri("/accounts/:address:")
-                    .header("Authorization", "Bearer secret")
+                    .header("Authorization", "Bearer some-secret")
                     .body(Body::empty())
                     .unwrap(),
             )

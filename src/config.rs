@@ -1,9 +1,11 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, prelude::*};
 use std::net::SocketAddr;
-
+use std::fs::File;
 use crate::model::Pair;
+
+const DEFAULT_SECRET: &str = "must-be-changed";
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -28,24 +30,43 @@ impl Job {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     listen_address: SocketAddr,
-    secret: String,
     jobs: Option<HashMap<Job, String>>,
     pairs: Option<Vec<Pair>>,
     accounts: Option<Vec<String>>,
 }
 
 impl Config {
+    pub fn from_file(path: &str) -> io::Result<Self> {
+        let mut file = File::open(path)?;
+
+        Self::from_reader(&mut file)
+    }
+
     pub fn from_reader(reader: &mut impl io::Read) -> io::Result<Self> {
         serde_yaml::from_reader::<_, Config>(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
-    pub fn get_listen_addr(&self) -> &SocketAddr {
-        &self.listen_address
+    /// It opens the secret file if specified in the configuration and read the
+    /// value. If none is given, a default secret is used.
+    pub fn get_secret(&self, secret_file: Option<&str>) -> io::Result<String> {
+        match secret_file {
+            Some(path) => {
+                let mut file = File::open(path)?;
+
+                let mut secret = String::new();
+                file.read_to_string(&mut secret)?;
+
+                Ok(secret)
+            },
+            None => {
+                Ok(DEFAULT_SECRET.to_string())
+            },
+        }
     }
 
-    pub fn get_secret(&self) -> &String {
-        &self.secret
+    pub fn get_listen_addr(&self) -> &SocketAddr {
+        &self.listen_address
     }
 
     pub fn get_jobs(&self) -> Option<&HashMap<Job, String>> {
@@ -65,7 +86,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
-            secret: "secret".to_string(),
             jobs: None,
             pairs: None,
             accounts: None,

@@ -8,3 +8,6 @@ data.db
 
 # Ignore the code coverage report.
 tarpaulin-report.html
+
+# Ignore the secret file.
+secret.txt
