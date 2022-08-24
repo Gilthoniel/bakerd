@@ -1,11 +1,12 @@
+use crate::model::Pair;
+use jsonwebtoken::DecodingKey;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{self, prelude::*};
 use std::net::SocketAddr;
-use std::fs::File;
-use crate::model::Pair;
 
-const DEFAULT_SECRET: &str = "must-be-changed";
+const DEFAULT_SECRET: &str = "IUBePnVgKXFPc2QzZTRuSykuQic5IUt8QlY=";
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,20 +50,20 @@ impl Config {
 
     /// It opens the secret file if specified in the configuration and read the
     /// value. If none is given, a default secret is used.
-    pub fn get_secret(&self, secret_file: Option<&str>) -> io::Result<String> {
-        match secret_file {
+    pub fn get_secret(&self, secret_file: Option<&str>) -> io::Result<DecodingKey> {
+        let key = match secret_file {
             Some(path) => {
                 let mut file = File::open(path)?;
 
                 let mut secret = String::new();
                 file.read_to_string(&mut secret)?;
 
-                Ok(secret)
-            },
-            None => {
-                Ok(DEFAULT_SECRET.to_string())
-            },
-        }
+                DecodingKey::from_base64_secret(&secret)
+            }
+            None => DecodingKey::from_base64_secret(DEFAULT_SECRET),
+        };
+
+        key.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     pub fn get_listen_addr(&self) -> &SocketAddr {

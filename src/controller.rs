@@ -14,7 +14,6 @@ use serde_json::json;
 /// An global definition of errors for the application.
 #[derive(Debug)]
 pub enum AppError {
-    Unauthorized,
     AccountNotFound,
     PriceNotFound,
     Internal,
@@ -25,10 +24,6 @@ impl IntoResponse for AppError {
     /// status and a message, or a default internal server error.
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            Self::Unauthorized => (
-                StatusCode::UNAUTHORIZED,
-                "authentication token is missing or invalid",
-            ),
             Self::AccountNotFound => (StatusCode::NOT_FOUND, "account does not exist"),
             Self::PriceNotFound => (StatusCode::NOT_FOUND, "price does not exist"),
             Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),

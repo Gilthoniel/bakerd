@@ -167,7 +167,9 @@ async fn prepare_context(data_dir: &str) -> std::result::Result<Context, PoolErr
 
 /// It creates an application and registers the different routes.
 async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
-    let secret = cfg.get_secret(args.secret_file.as_ref().map(|p| p.as_ref())).expect("unable to read secret file");
+    let secret = cfg
+        .get_secret(args.secret_file.as_ref().map(|p| p.as_ref()))
+        .expect("unable to read secret file");
 
     // as a better security, the secret is only cloned once and shared between
     // the requests.
@@ -274,7 +276,10 @@ mod integration_tests {
         secret_file.push("secret.txt");
 
         let mut file = File::create(secret_file.clone()).unwrap();
-        file.write_all(b"some-secret").unwrap();
+        file.write_all(b"IUBePnVgKXFPc2QzZTRuSykuQic5IUt8QlY=")
+            .unwrap();
+
+        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjMyNTIzOTk5OTgxfQ.KLkRLSduNLILsUlOJewQ1ihhsefZZ6Ris9IwkQ7IZtU";
 
         let ctx = prepare_context(":memory:").await.unwrap();
         let mut args = Args::default();
@@ -286,7 +291,7 @@ mod integration_tests {
             .oneshot(
                 Request::builder()
                     .uri("/accounts/:address:")
-                    .header("Authorization", "Bearer some-secret")
+                    .header("Authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
