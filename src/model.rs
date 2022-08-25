@@ -180,6 +180,29 @@ impl From<models::Status> for Status {
     }
 }
 
+#[derive(Debug)]
+pub struct User {
+    id: i32,
+    username: String,
+    password: String,
+}
+
+impl User {
+    pub fn get_username(&self) -> &str {
+        &self.username
+    }
+}
+
+impl From<models::User> for User {
+    fn from(u: models::User) -> Self {
+        Self {
+            id: u.id,
+            username: u.username,
+            password: u.password,
+        }
+    }
+}
+
 /// It takes a string of a numeric value and tries to convert it into a decimal
 /// instance, otherwise it returns zero.
 fn to_decimal(value: &str) -> Decimal {

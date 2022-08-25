@@ -2,6 +2,7 @@ mod account;
 mod block;
 mod price;
 mod status;
+mod user;
 
 use diesel::r2d2::ConnectionManager;
 use diesel::result::Error as DriverError;
@@ -10,13 +11,14 @@ use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use std::fmt;
 use std::time::Duration;
 
-pub use self::{account::*, block::*, price::*, status::*};
+pub use self::{account::*, block::*, price::*, status::*, user::*};
 
 pub mod models {
     pub use super::account::models::*;
     pub use super::block::models::*;
     pub use super::price::models::*;
     pub use super::status::models::*;
+    pub use super::user::models::*;
 }
 
 /// A embedding of the migrations of the application to package them alongside

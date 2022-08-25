@@ -47,6 +47,32 @@ table! {
     }
 }
 
-joinable!(account_rewards -> accounts (account_id));
+table! {
+    user_sessions (id) {
+        id -> Text,
+        user_id -> Integer,
+        expiration_ms -> BigInt,
+        last_use_ms -> BigInt,
+    }
+}
 
-allow_tables_to_appear_in_same_query!(account_rewards, accounts, blocks, prices, statuses,);
+table! {
+    users (id) {
+        id -> Integer,
+        username -> Text,
+        password -> Text,
+    }
+}
+
+joinable!(account_rewards -> accounts (account_id));
+joinable!(user_sessions -> users (user_id));
+
+allow_tables_to_appear_in_same_query!(
+    account_rewards,
+    accounts,
+    blocks,
+    prices,
+    statuses,
+    user_sessions,
+    users,
+);

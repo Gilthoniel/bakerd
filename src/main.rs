@@ -31,6 +31,7 @@ struct Context {
     price_repository: DynPriceRepository,
     block_repository: DynBlockRepository,
     status_repository: DynStatusRepository,
+    user_repository: DynUserRepository,
 }
 
 impl Context {
@@ -40,6 +41,7 @@ impl Context {
             price_repository: Arc::new(SqlitePriceRepository::new(pool.clone())),
             block_repository: Arc::new(SqliteBlockRepository::new(pool.clone())),
             status_repository: Arc::new(SqliteStatusRepository::new(pool.clone())),
+            user_repository: Arc::new(SqliteUserRepository::new(pool.clone())),
         }
     }
 }
@@ -187,6 +189,7 @@ async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
         .layer(Extension(ctx.price_repository.clone()))
         .layer(Extension(ctx.block_repository.clone()))
         .layer(Extension(ctx.status_repository.clone()))
+        .layer(Extension(ctx.user_repository.clone()))
         .layer(axum::middleware::from_fn(move |req, next| {
             middleware::authentication(req, next, secret.clone())
         }))
