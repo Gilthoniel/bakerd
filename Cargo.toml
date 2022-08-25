@@ -27,6 +27,7 @@ systemstat = "0.1"
 clap = { version = "3.2", features = ["derive"] }
 jsonwebtoken = "8.1"
 bcrypt = "0.13"
+uuid = { version = "1.1", features = ["v4"] }
 
 [build-dependencies]
 tonic-build = "0.7"

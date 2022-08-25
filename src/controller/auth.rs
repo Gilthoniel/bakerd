@@ -7,6 +7,9 @@ use jsonwebtoken::EncodingKey;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
+
+const SESSION_DURATION: u64 = 0;
 
 #[derive(Deserialize, Debug)]
 pub struct Credentials {
@@ -16,7 +19,8 @@ pub struct Credentials {
 
 #[derive(Serialize, Debug)]
 pub struct Authentication {
-    token: String,
+    access_token: String,
+    refresh_token: String,
 }
 
 /// A controller to authorize users. It takes a username and a password and
@@ -42,11 +46,22 @@ pub async fn authorize(
         return Err(AppError::WrongCredentials);
     }
 
+    let session = repository
+        .create_session(&user, Duration::from_secs(SESSION_DURATION))
+        .await
+        .map_err(|e| {
+            error!("unable to create session: {}", e);
+            AppError::Internal
+        })?;
+
     match generate_token(&key) {
         Ok(token) => {
             debug!("user [{}] has been authenticated", user.get_username());
 
-            let ret = Authentication { token };
+            let ret = Authentication {
+                access_token: token,
+                refresh_token: session.get_refresh_token().into(),
+            };
 
             Ok(ret.into())
         }
@@ -86,10 +101,11 @@ pub async fn create_user(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repository::MockUserRepository;
+    use crate::repository::{MockUserRepository, models};
     use jsonwebtoken::EncodingKey;
     use mockall::predicate::*;
     use std::fmt;
+    use crate::model::Session;
 
     #[derive(Debug)]
     struct FakeError;
@@ -115,6 +131,15 @@ mod tests {
                 password: hash_password("password"),
             }))
         });
+
+        repository.expect_create_session()
+            .times(1)
+            .returning(|_, _| Ok(Session::from(models::Session {
+                id: "refresh-token".into(),
+                user_id: 1,
+                expiration_ms: 0,
+                last_use_ms: 0,
+            })));
 
         let creds = Credentials {
             username: "bob".to_string(),

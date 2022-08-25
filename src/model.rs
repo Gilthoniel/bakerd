@@ -190,6 +190,10 @@ pub struct User {
 }
 
 impl User {
+    pub fn get_id(&self) -> i32 {
+        self.id
+    }
+
     pub fn get_username(&self) -> &str {
         &self.username
     }
@@ -206,6 +210,29 @@ impl From<models::User> for User {
             id: u.id,
             username: u.username,
             password: u.password,
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Session {
+    id: String,
+    expiration_ms: i64,
+    last_use_ms: i64,
+}
+
+impl Session {
+    pub fn get_refresh_token(&self) -> &str {
+        &self.id
+    }
+}
+
+impl From<models::Session> for Session {
+    fn from(s: models::Session) -> Self {
+        Self {
+            id: s.id,
+            expiration_ms: s.expiration_ms,
+            last_use_ms: s.last_use_ms,
         }
     }
 }
