@@ -1,7 +1,11 @@
 use crate::config::Config;
 use crate::job::Jobber;
 use crate::repository::*;
-use axum::{extract::Extension, routing::get, Router};
+use axum::{
+    extract::Extension,
+    routing::{get, post},
+    Router,
+};
 use clap::Parser;
 use env_logger::Env;
 use std::collections::HashMap;
@@ -17,11 +21,11 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate async_trait;
 
+mod authentication;
 mod client;
 mod config;
 mod controller;
 mod job;
-mod middleware;
 mod model;
 mod repository;
 mod schema;
@@ -169,16 +173,18 @@ async fn prepare_context(data_dir: &str) -> std::result::Result<Context, PoolErr
 
 /// It creates an application and registers the different routes.
 async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
-    let secret = cfg
-        .get_secret(args.secret_file.as_ref().map(|p| p.as_ref()))
-        .expect("unable to read secret file");
+    let decoding_key = cfg
+        .get_decoding_key(args.secret_file.as_ref().map(|p| p.as_ref()))
+        .expect("unable to read decoding key");
 
-    // as a better security, the secret is only cloned once and shared between
-    // the requests.
-    let secret = Arc::new(secret.clone());
+    let encoding_key = cfg
+        .get_encoding_key(args.secret_file.as_ref().map(|p| p.as_ref()))
+        .expect("unable to read encoding key");
 
     Router::new()
         .route("/", get(controller::get_status))
+        .route("/auth/authorize", post(controller::auth::authorize))
+        .route("/users", post(controller::auth::create_user))
         .route("/accounts/:addr", get(controller::get_account))
         .route(
             "/accounts/:addr/rewards",
@@ -190,9 +196,8 @@ async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
         .layer(Extension(ctx.block_repository.clone()))
         .layer(Extension(ctx.status_repository.clone()))
         .layer(Extension(ctx.user_repository.clone()))
-        .layer(axum::middleware::from_fn(move |req, next| {
-            middleware::authentication(req, next, secret.clone())
-        }))
+        .layer(Extension(Arc::new(encoding_key)))
+        .layer(Extension(Arc::new(decoding_key)))
 }
 
 /// It schedules the different jobs from the configuration and start the server.

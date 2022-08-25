@@ -1,5 +1,5 @@
 use crate::model::Pair;
-use jsonwebtoken::DecodingKey;
+use jsonwebtoken::{errors, DecodingKey, EncodingKey};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
@@ -50,20 +50,12 @@ impl Config {
 
     /// It opens the secret file if specified in the configuration and read the
     /// value. If none is given, a default secret is used.
-    pub fn get_secret(&self, secret_file: Option<&str>) -> io::Result<DecodingKey> {
-        let key = match secret_file {
-            Some(path) => {
-                let mut file = File::open(path)?;
+    pub fn get_decoding_key(&self, secret_file: Option<&str>) -> io::Result<DecodingKey> {
+        self.read_secret(secret_file, DecodingKey::from_base64_secret)
+    }
 
-                let mut secret = String::new();
-                file.read_to_string(&mut secret)?;
-
-                DecodingKey::from_base64_secret(&secret)
-            }
-            None => DecodingKey::from_base64_secret(DEFAULT_SECRET),
-        };
-
-        key.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    pub fn get_encoding_key(&self, key_file: Option<&str>) -> io::Result<EncodingKey> {
+        self.read_secret(key_file, EncodingKey::from_base64_secret)
     }
 
     pub fn get_listen_addr(&self) -> &SocketAddr {
@@ -80,6 +72,26 @@ impl Config {
 
     pub fn get_accounts(&self) -> Option<&Vec<String>> {
         self.accounts.as_ref()
+    }
+
+    fn read_secret<T>(
+        &self,
+        path: Option<&str>,
+        from: impl FnOnce(&str) -> errors::Result<T>,
+    ) -> io::Result<T> {
+        let key = match path {
+            Some(path) => {
+                let mut file = File::open(path)?;
+
+                let mut secret = String::new();
+                file.read_to_string(&mut secret)?;
+
+                from(&secret)
+            }
+            None => from(DEFAULT_SECRET),
+        };
+
+        key.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
 

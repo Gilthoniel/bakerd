@@ -1,3 +1,6 @@
+pub mod auth;
+
+use crate::authentication::Claims;
 use crate::model::{Account, Price, Reward, Status};
 use crate::repository::{
     DynAccountRepository, DynPriceRepository, DynStatusRepository, RepositoryError,
@@ -16,6 +19,7 @@ use serde_json::json;
 pub enum AppError {
     AccountNotFound,
     PriceNotFound,
+    WrongCredentials,
     Internal,
 }
 
@@ -26,6 +30,7 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             Self::AccountNotFound => (StatusCode::NOT_FOUND, "account does not exist"),
             Self::PriceNotFound => (StatusCode::NOT_FOUND, "price does not exist"),
+            Self::WrongCredentials => (StatusCode::UNAUTHORIZED, "wrong credentials"),
             Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
         };
 
@@ -41,6 +46,7 @@ impl IntoResponse for AppError {
 /// A controller to return the status of the application.
 pub async fn get_status(
     Extension(repository): Extension<DynStatusRepository>,
+    _: Claims,
 ) -> Result<Json<Status>, AppError> {
     let status = repository
         .get_last_report()
@@ -54,6 +60,7 @@ pub async fn get_status(
 pub async fn get_account(
     Path(addr): Path<String>,
     Extension(repo): Extension<DynAccountRepository>,
+    _: Claims,
 ) -> Result<Json<Account>, AppError> {
     let account = repo.get_account(&addr).await.map_err(map_account_error)?;
 
@@ -64,6 +71,7 @@ pub async fn get_account(
 pub async fn get_account_rewards(
     Path(addr): Path<String>,
     Extension(repository): Extension<DynAccountRepository>,
+    _: Claims,
 ) -> Result<Json<Vec<Reward>>, AppError> {
     let account = repository
         .get_account(&addr)
@@ -83,6 +91,7 @@ pub async fn get_account_rewards(
 pub async fn get_price(
     Path(pair): Path<String>,
     Extension(repository): Extension<DynPriceRepository>,
+    _: Claims,
 ) -> Result<Json<Price>, AppError> {
     // Split the identifier into the two parts. If unsuccessful, an default
     // empty pair is returned.
@@ -168,7 +177,7 @@ mod tests {
             }))
         });
 
-        let res = get_status(Extension(Arc::new(repository))).await;
+        let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
 
         assert!(matches!(res, Ok(_)));
     }
@@ -182,7 +191,7 @@ mod tests {
             .times(1)
             .returning(|| Err(RepositoryError::NotFound));
 
-        let res = get_status(Extension(Arc::new(repository))).await;
+        let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
 
         assert!(matches!(res, Err(AppError::Internal)));
     }
@@ -207,9 +216,13 @@ mod tests {
             .times(1)
             .return_once(move |_| Ok(account));
 
-        let res = get_account(Path(":address:".into()), Extension(Arc::new(repository)))
-            .await
-            .unwrap();
+        let res = get_account(
+            Path(":address:".into()),
+            Extension(Arc::new(repository)),
+            Claims::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(expect, res.0)
     }
@@ -226,7 +239,12 @@ mod tests {
             .times(1)
             .returning(|_| Err(RepositoryError::NotFound));
 
-        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await;
+        let res = get_account(
+            Path(addr.to_string()),
+            Extension(Arc::new(repository)),
+            Claims::default(),
+        )
+        .await;
 
         assert!(matches!(res, Err(AppError::AccountNotFound)));
     }
@@ -247,7 +265,12 @@ mod tests {
                 )))
             });
 
-        let res = get_account(Path(addr.to_string()), Extension(Arc::new(repository))).await;
+        let res = get_account(
+            Path(addr.to_string()),
+            Extension(Arc::new(repository)),
+            Claims::default(),
+        )
+        .await;
 
         assert!(matches!(res, Err(AppError::Internal)));
     }
@@ -288,6 +311,7 @@ mod tests {
         let res = get_account_rewards(
             Path(":address:".to_string()),
             Extension(Arc::new(repository)),
+            Claims::default(),
         );
 
         assert!(matches!(res.await, Ok(rewards) if rewards.len() == 1));
@@ -307,9 +331,13 @@ mod tests {
             .times(1)
             .returning(move |pair| Ok(Price::new(pair.clone(), bid, ask)));
 
-        let res = get_price(Path("CCD:USD".into()), Extension(Arc::new(repository)))
-            .await
-            .unwrap();
+        let res = get_price(
+            Path("CCD:USD".into()),
+            Extension(Arc::new(repository)),
+            Claims::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(bid, res.bid());
         assert_eq!(ask, res.ask());
@@ -327,7 +355,12 @@ mod tests {
             .times(1)
             .returning(move |_| Err(RepositoryError::NotFound));
 
-        let res = get_price(Path("".into()), Extension(Arc::new(repository))).await;
+        let res = get_price(
+            Path("".into()),
+            Extension(Arc::new(repository)),
+            Claims::default(),
+        )
+        .await;
 
         assert!(matches!(res, Err(AppError::PriceNotFound)));
     }

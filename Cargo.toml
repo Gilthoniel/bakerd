@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 log = "0.4"
 env_logger = "0.9"
-axum = "0.5"
+axum = { version = "0.5", features = ["headers"] }
 tokio = { version = "1.2", features = ["full"] }
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -26,6 +26,7 @@ reqwest = { version = "0.11", features = ["json"] }
 systemstat = "0.1"
 clap = { version = "3.2", features = ["derive"] }
 jsonwebtoken = "8.1"
+bcrypt = "0.13"
 
 [build-dependencies]
 tonic-build = "0.7"

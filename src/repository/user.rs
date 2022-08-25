@@ -23,6 +23,7 @@ pub mod models {
     }
 }
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait UserRepository {
     async fn create(&self, user: models::NewUser) -> Result<()>;

@@ -180,16 +180,23 @@ impl From<models::Status> for Status {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Debug)]
 pub struct User {
     id: i32,
     username: String,
+
+    #[serde(skip)]
     password: String,
 }
 
 impl User {
     pub fn get_username(&self) -> &str {
         &self.username
+    }
+
+    /// It returns if the value corresponds to the hash of the password.
+    pub fn check_password(&self, value: &str) -> bool {
+        crate::authentication::verify_password(value, &self.password)
     }
 }
 
