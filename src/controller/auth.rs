@@ -21,6 +21,7 @@ pub struct Credentials {
 pub struct Authentication {
     access_token: String,
     refresh_token: String,
+    expires_at: i64,
 }
 
 /// A controller to authorize users. It takes a username and a password and
@@ -30,6 +31,7 @@ pub async fn authorize(
     Extension(repository): Extension<DynUserRepository>,
     Extension(key): Extension<Arc<EncodingKey>>,
 ) -> Result<Json<Authentication>, AppError> {
+    // 1. Make sure the user exists.
     let user = repository
         .get(&request.username)
         .await
@@ -42,10 +44,13 @@ pub async fn authorize(
             }
         })?;
 
+    // 2. Check that the password matches the hash in the storage.
     if !user.check_password(&request.password) {
         return Err(AppError::WrongCredentials);
     }
 
+    // 3. Create a new session that will allow the user to refresh the access
+    //    token after it expires.
     let session = repository
         .create_session(&user, Duration::from_secs(SESSION_DURATION))
         .await
@@ -54,13 +59,16 @@ pub async fn authorize(
             AppError::Internal
         })?;
 
-    match generate_token(&key) {
+    let claims = Claims::default();
+
+    match generate_token(&claims, &key) {
         Ok(token) => {
             debug!("user [{}] has been authenticated", user.get_username());
 
             let ret = Authentication {
                 access_token: token,
                 refresh_token: session.get_refresh_token().into(),
+                expires_at: claims.expiration(),
             };
 
             Ok(ret.into())

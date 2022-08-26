@@ -41,6 +41,13 @@ pub struct Claims {
     exp: u64,
 }
 
+impl Claims {
+    /// It returns the timestamp in milliseconds of the expiration of the token.
+    pub fn expiration(&self) -> i64 {
+        self.exp.try_into().unwrap_or(0) * 1000
+    }
+}
+
 impl Default for Claims {
     fn default() -> Self {
         Self {
@@ -73,9 +80,7 @@ impl<S: Send + Sync> FromRequest<S> for Claims {
 }
 
 /// It takes an encoding key and create a valid JSON Web Token.
-pub fn generate_token(key: &EncodingKey) -> errors::Result<String> {
-    let claims = Claims::default();
-
+pub fn generate_token(claims: &Claims, key: &EncodingKey) -> errors::Result<String> {
     encode(&Header::default(), &claims, key)
 }
 
@@ -111,7 +116,7 @@ mod tests {
             .route("/", get(|_: Claims| async { () }))
             .layer(Extension(decoding_key));
 
-        let token = generate_token(&encoding_key).unwrap();
+        let token = generate_token(&Claims::default(), &encoding_key).unwrap();
 
         let res = app
             .oneshot(
@@ -134,7 +139,7 @@ mod tests {
             .route("/", get(|_: Claims| async { () }))
             .layer(Extension(decoding_key));
 
-        let token = generate_token(&encoding_key).unwrap();
+        let token = generate_token(&Claims::default(), &encoding_key).unwrap();
 
         let res = app
             .oneshot(
