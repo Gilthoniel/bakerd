@@ -184,6 +184,7 @@ async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
     Router::new()
         .route("/", get(controller::get_status))
         .route("/auth/authorize", post(controller::auth::authorize))
+        .route("/auth/token", post(controller::auth::refresh_token))
         .route("/users", post(controller::auth::create_user))
         .route("/accounts/:addr", get(controller::get_account))
         .route(
@@ -234,6 +235,7 @@ mod integration_tests {
     use std::fs::File;
     use std::io::prelude::*;
     use tower::ServiceExt;
+    use crate::authentication::Claims;
 
     /// It makes sure that the main function is running properly.
     #[test]
@@ -287,13 +289,16 @@ mod integration_tests {
         file.write_all(b"IUBePnVgKXFPc2QzZTRuSykuQic5IUt8QlY=")
             .unwrap();
 
-        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjMyNTIzOTk5OTgxfQ.KLkRLSduNLILsUlOJewQ1ihhsefZZ6Ris9IwkQ7IZtU";
+        let cfg = Config::default();
+
+        let token = authentication::generate_token(&Claims::new(0), &cfg.get_encoding_key(secret_file.to_str()).unwrap()).unwrap();
 
         let ctx = prepare_context(":memory:").await.unwrap();
+        
         let mut args = Args::default();
         args.secret_file = secret_file.to_str().map(String::from);
 
-        let app = create_app(&ctx, &Config::default(), &args).await;
+        let app = create_app(&ctx, &cfg, &args).await;
 
         let response = app
             .oneshot(

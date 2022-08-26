@@ -38,21 +38,25 @@ impl IntoResponse for AuthError {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
+    user_id: i32,
     exp: u64,
 }
 
 impl Claims {
+    pub fn new(user_id: i32) -> Self {
+        Self {
+            user_id,
+            exp: jsonwebtoken::get_current_timestamp() + DEFAULT_EXPIRATION,
+        }
+    }
+
+    pub fn user_id(&self) -> i32 {
+        self.user_id
+    }
+
     /// It returns the timestamp in milliseconds of the expiration of the token.
     pub fn expiration(&self) -> i64 {
         self.exp.try_into().unwrap_or(0) * 1000
-    }
-}
-
-impl Default for Claims {
-    fn default() -> Self {
-        Self {
-            exp: jsonwebtoken::get_current_timestamp() + DEFAULT_EXPIRATION,
-        }
     }
 }
 
@@ -116,7 +120,7 @@ mod tests {
             .route("/", get(|_: Claims| async { () }))
             .layer(Extension(decoding_key));
 
-        let token = generate_token(&Claims::default(), &encoding_key).unwrap();
+        let token = generate_token(&Claims::new(0), &encoding_key).unwrap();
 
         let res = app
             .oneshot(
@@ -139,7 +143,7 @@ mod tests {
             .route("/", get(|_: Claims| async { () }))
             .layer(Extension(decoding_key));
 
-        let token = generate_token(&Claims::default(), &encoding_key).unwrap();
+        let token = generate_token(&Claims::new(0), &encoding_key).unwrap();
 
         let res = app
             .oneshot(

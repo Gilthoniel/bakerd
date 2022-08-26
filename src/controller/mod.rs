@@ -177,7 +177,7 @@ mod tests {
             }))
         });
 
-        let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
+        let res = get_status(Extension(Arc::new(repository)), Claims::new(0)).await;
 
         assert!(matches!(res, Ok(_)));
     }
@@ -191,7 +191,7 @@ mod tests {
             .times(1)
             .returning(|| Err(RepositoryError::NotFound));
 
-        let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
+        let res = get_status(Extension(Arc::new(repository)), Claims::new(0)).await;
 
         assert!(matches!(res, Err(AppError::Internal)));
     }
@@ -219,7 +219,7 @@ mod tests {
         let res = get_account(
             Path(":address:".into()),
             Extension(Arc::new(repository)),
-            Claims::default(),
+            Claims::new(0),
         )
         .await
         .unwrap();
@@ -242,7 +242,7 @@ mod tests {
         let res = get_account(
             Path(addr.to_string()),
             Extension(Arc::new(repository)),
-            Claims::default(),
+            Claims::new(0),
         )
         .await;
 
@@ -268,7 +268,7 @@ mod tests {
         let res = get_account(
             Path(addr.to_string()),
             Extension(Arc::new(repository)),
-            Claims::default(),
+            Claims::new(0),
         )
         .await;
 
@@ -311,7 +311,7 @@ mod tests {
         let res = get_account_rewards(
             Path(":address:".to_string()),
             Extension(Arc::new(repository)),
-            Claims::default(),
+            Claims::new(0),
         );
 
         assert!(matches!(res.await, Ok(rewards) if rewards.len() == 1));
@@ -334,7 +334,7 @@ mod tests {
         let res = get_price(
             Path("CCD:USD".into()),
             Extension(Arc::new(repository)),
-            Claims::default(),
+            Claims::new(0),
         )
         .await
         .unwrap();
@@ -358,7 +358,7 @@ mod tests {
         let res = get_price(
             Path("".into()),
             Extension(Arc::new(repository)),
-            Claims::default(),
+            Claims::new(0),
         )
         .await;
 
