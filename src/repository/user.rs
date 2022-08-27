@@ -246,10 +246,7 @@ mod integration_tests {
             repository.get("bob").await.unwrap()
         };
 
-        let session = repository
-            .create_session(&user, 1000)
-            .await
-            .unwrap();
+        let session = repository.create_session(&user, 1000).await.unwrap();
 
         let res = repository
             .use_session(session.get_refresh_token(), &user, 700)
@@ -277,21 +274,18 @@ mod integration_tests {
             repository.get("bob").await.unwrap()
         };
 
-        repository
-            .create_session(&user, 1000)
-            .await
-            .unwrap();
+        repository.create_session(&user, 1000).await.unwrap();
 
-        let session = repository
-            .create_session(&user, 1200)
-            .await;
+        let session = repository.create_session(&user, 1200).await;
 
-        assert!(matches!(session, Ok(s) if s == Session::from(models::Session {
-            id: s.get_refresh_token().into(),
-            user_id: user.get_id(),
-            expiration_ms: 1200 + SESSION_DURATION_MILLIS,
-            last_use_ms: 1200,
-        })));
+        assert!(
+            matches!(session, Ok(s) if s == Session::from(models::Session {
+                id: s.get_refresh_token().into(),
+                user_id: user.get_id(),
+                expiration_ms: 1200 + SESSION_DURATION_MILLIS,
+                last_use_ms: 1200,
+            }))
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -313,10 +307,7 @@ mod integration_tests {
             repository.get("bob").await.unwrap()
         };
 
-        let session = repository
-            .create_session(&user, 1000)
-            .await
-            .unwrap();
+        let session = repository.create_session(&user, 1000).await.unwrap();
 
         let res = repository
             .use_session(

@@ -1,5 +1,5 @@
 use super::AppError;
-use crate::authentication::{generate_token, hash_password, Claims};
+use crate::authentication::{generate_token, hash_password, Claims, Role};
 use crate::model::{Session, User};
 use crate::repository::{models, DynUserRepository, RepositoryError};
 use axum::{extract::Extension, Json};
@@ -64,10 +64,10 @@ pub async fn refresh_token(
     claims: Claims,
     request: Json<Token>,
 ) -> Result<Json<Authentication>, AppError> {
-    let user = repository
-        .get_by_id(claims.user_id())
-        .await
-        .map_err(map_wrong_creds)?;
+    let user = match claims.user_id() {
+        Some(id) => repository.get_by_id(id).await.map_err(map_wrong_creds)?,
+        None => return Err(AppError::WrongCredentials),
+    };
 
     let now = Utc::now().timestamp_millis();
 
@@ -75,7 +75,10 @@ pub async fn refresh_token(
         .use_session(&request.refresh_token, &user, now)
         .await
         .map_err(|e| {
-            error!("unable to use the session [{}]: {}", request.refresh_token, e);
+            error!(
+                "unable to use the session [{}]: {}",
+                request.refresh_token, e
+            );
             AppError::WrongCredentials
         })?;
 
@@ -87,8 +90,12 @@ pub async fn refresh_token(
 pub async fn create_user(
     request: Json<Credentials>,
     Extension(repository): Extension<DynUserRepository>,
-    _: Claims,
+    claims: Claims,
 ) -> Result<Json<User>, AppError> {
+    if !claims.has_role(Role::Admin) {
+        return Err(AppError::Forbidden);
+    }
+
     let new_user = models::NewUser {
         username: request.username.clone(),
         password: hash_password(&request.password),
@@ -112,7 +119,7 @@ fn make_token(
     session: &Session,
     key: &EncodingKey,
 ) -> Result<Json<Authentication>, AppError> {
-    let claims = Claims::new(user.get_id());
+    let claims = Claims::new(Some(user.get_id()), None);
 
     match generate_token(&claims, &key) {
         Ok(token) => {
@@ -256,6 +263,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_authorize_session_failure() {
+        let encoding_key = Arc::new(EncodingKey::from_secret(b"secret"));
+
+        let mut repository = MockUserRepository::new();
+
+        repository.expect_get().times(1).returning(|_| {
+            Ok(User::from(models::User {
+                id: 1,
+                username: "bob".to_string(),
+                password: hash_password("password"),
+            }))
+        });
+
+        repository
+            .expect_create_session()
+            .times(1)
+            .returning(|_, _| Err(RepositoryError::NotFound));
+
+        let creds = Credentials {
+            username: "bob".to_string(),
+            password: "password".to_string(),
+        };
+
+        let res = authorize(
+            creds.into(),
+            Extension(Arc::new(repository)),
+            Extension(encoding_key),
+        );
+
+        assert!(matches!(res.await, Err(AppError::Internal)));
+    }
+
+    #[tokio::test]
     async fn test_authorize_wrong_password() {
         let encoding_key = Arc::new(EncodingKey::from_secret(b"secret"));
 
@@ -278,6 +318,73 @@ mod tests {
             creds.into(),
             Extension(Arc::new(repository)),
             Extension(encoding_key),
+        );
+
+        assert!(matches!(res.await, Err(AppError::WrongCredentials)));
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token() {
+        let encoding_key = Arc::new(EncodingKey::from_secret(b"secret"));
+
+        let mut repository = MockUserRepository::new();
+
+        repository
+            .expect_get_by_id()
+            .with(eq(42))
+            .times(1)
+            .returning(|_| Ok(User::from(models::User {
+                id: 42,
+                username: "bob".to_string(),
+                password: hash_password("password"),
+            })));
+
+        repository
+            .expect_use_session()
+            .times(1)
+            .returning(|_, _, _| Ok(Session::from(models::Session {
+                id: "refresh-token".into(),
+                user_id: 42,
+                expiration_ms: 1500,
+                last_use_ms: 1000,
+            })));
+
+        let res = refresh_token(
+            Extension(Arc::new(repository)), 
+            Extension(encoding_key), 
+            Claims::new(Some(42), None),
+            Json(Token{ refresh_token: "token".into() }), 
+        );
+
+        assert!(matches!(res.await, Ok(_)));
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_wrong_refresh() {
+        let encoding_key = Arc::new(EncodingKey::from_secret(b"secret"));
+
+        let mut repository = MockUserRepository::new();
+
+        repository
+            .expect_get_by_id()
+            .with(eq(42))
+            .times(1)
+            .returning(|_| Ok(User::from(models::User {
+                id: 42,
+                username: "bob".to_string(),
+                password: hash_password("password"),
+            })));
+
+        repository
+            .expect_use_session()
+            .times(1)
+            .returning(|_, _, _| Err(RepositoryError::NotFound));
+
+        let res = refresh_token(
+            Extension(Arc::new(repository)), 
+            Extension(encoding_key), 
+            Claims::new(Some(42), None),
+            Json(Token{ refresh_token: "token".into() }), 
         );
 
         assert!(matches!(res.await, Err(AppError::WrongCredentials)));
@@ -309,10 +416,28 @@ mod tests {
         let res = create_user(
             creds.into(),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::new(None, Some(vec![Role::Admin])),
         );
 
         assert!(matches!(res.await, Ok(_)));
+    }
+
+    #[tokio::test]
+    async fn test_create_user_no_role() {
+        let repository = MockUserRepository::new();
+
+        let creds = Credentials {
+            username: "bob".to_string(),
+            password: "password".to_string(),
+        };
+
+        let res = create_user(
+            creds.into(),
+            Extension(Arc::new(repository)),
+            Claims::new(None, None),
+        );
+
+        assert!(matches!(res.await, Err(AppError::Forbidden)));
     }
 
     #[tokio::test]
@@ -332,7 +457,7 @@ mod tests {
         let res = create_user(
             creds.into(),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::new(None, Some(vec![Role::Admin])),
         );
 
         assert!(matches!(res.await, Err(AppError::Internal)));
@@ -358,7 +483,7 @@ mod tests {
         let res = create_user(
             creds.into(),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::new(None, Some(vec![Role::Admin])),
         );
 
         assert!(matches!(res.await, Err(AppError::Internal)));

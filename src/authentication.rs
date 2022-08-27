@@ -13,8 +13,10 @@ use std::sync::Arc;
 
 const DEFAULT_EXPIRATION: u64 = 1 * 60 * 60;
 
+// A definition of the authentication header containing a bearer token.
 type BearerHeader = TypedHeader<Authorization<Bearer>>;
 
+// An authentication error.
 pub enum AuthError {
     Malformed,
     Invalid,
@@ -36,27 +38,60 @@ impl IntoResponse for AuthError {
     }
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum Role {
+    #[serde(rename = "admin")]
+    Admin,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    user_id: i32,
+    user_id: Option<i32>,
+    roles: Option<Vec<Role>>,
     exp: u64,
 }
 
 impl Claims {
-    pub fn new(user_id: i32) -> Self {
-        Self {
-            user_id,
-            exp: jsonwebtoken::get_current_timestamp() + DEFAULT_EXPIRATION,
-        }
+    pub fn new(user_id: Option<i32>, roles: Option<Vec<Role>>) -> Self {
+        let mut claims = Self::default();
+        claims.user_id = user_id;
+        claims.roles = roles;
+
+        claims
     }
 
-    pub fn user_id(&self) -> i32 {
+    pub fn user_id(&self) -> Option<i32> {
         self.user_id
+    }
+
+    pub fn has_role(&self, role: Role) -> bool {
+        match &self.roles {
+            None => false,
+            Some(roles) => {
+                for r in roles {
+                    if *r == role {
+                        return true;
+                    }
+                }
+
+                false
+            },
+        }
     }
 
     /// It returns the timestamp in milliseconds of the expiration of the token.
     pub fn expiration(&self) -> i64 {
         self.exp.try_into().unwrap_or(0) * 1000
+    }
+}
+
+impl Default for Claims {
+    fn default() -> Self {
+        Self {
+            user_id: None,
+            roles: None,
+            exp: jsonwebtoken::get_current_timestamp() + DEFAULT_EXPIRATION,
+        }
     }
 }
 
@@ -120,7 +155,7 @@ mod tests {
             .route("/", get(|_: Claims| async { () }))
             .layer(Extension(decoding_key));
 
-        let token = generate_token(&Claims::new(0), &encoding_key).unwrap();
+        let token = generate_token(&Claims::default(), &encoding_key).unwrap();
 
         let res = app
             .oneshot(
@@ -143,7 +178,7 @@ mod tests {
             .route("/", get(|_: Claims| async { () }))
             .layer(Extension(decoding_key));
 
-        let token = generate_token(&Claims::new(0), &encoding_key).unwrap();
+        let token = generate_token(&Claims::default(), &encoding_key).unwrap();
 
         let res = app
             .oneshot(

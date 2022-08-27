@@ -227,6 +227,7 @@ async fn run_server(
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    use crate::authentication::Claims;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -235,7 +236,6 @@ mod integration_tests {
     use std::fs::File;
     use std::io::prelude::*;
     use tower::ServiceExt;
-    use crate::authentication::Claims;
 
     /// It makes sure that the main function is running properly.
     #[test]
@@ -291,10 +291,14 @@ mod integration_tests {
 
         let cfg = Config::default();
 
-        let token = authentication::generate_token(&Claims::new(0), &cfg.get_encoding_key(secret_file.to_str()).unwrap()).unwrap();
+        let token = authentication::generate_token(
+            &Claims::default(),
+            &cfg.get_encoding_key(secret_file.to_str()).unwrap(),
+        )
+        .unwrap();
 
         let ctx = prepare_context(":memory:").await.unwrap();
-        
+
         let mut args = Args::default();
         args.secret_file = secret_file.to_str().map(String::from);
 

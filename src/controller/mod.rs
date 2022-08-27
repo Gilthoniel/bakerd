@@ -20,6 +20,7 @@ pub enum AppError {
     AccountNotFound,
     PriceNotFound,
     WrongCredentials,
+    Forbidden,
     Internal,
 }
 
@@ -31,6 +32,7 @@ impl IntoResponse for AppError {
             Self::AccountNotFound => (StatusCode::NOT_FOUND, "account does not exist"),
             Self::PriceNotFound => (StatusCode::NOT_FOUND, "price does not exist"),
             Self::WrongCredentials => (StatusCode::UNAUTHORIZED, "wrong credentials"),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal server error"),
         };
 
@@ -177,7 +179,7 @@ mod tests {
             }))
         });
 
-        let res = get_status(Extension(Arc::new(repository)), Claims::new(0)).await;
+        let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
 
         assert!(matches!(res, Ok(_)));
     }
@@ -191,7 +193,7 @@ mod tests {
             .times(1)
             .returning(|| Err(RepositoryError::NotFound));
 
-        let res = get_status(Extension(Arc::new(repository)), Claims::new(0)).await;
+        let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
 
         assert!(matches!(res, Err(AppError::Internal)));
     }
@@ -219,7 +221,7 @@ mod tests {
         let res = get_account(
             Path(":address:".into()),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::default(),
         )
         .await
         .unwrap();
@@ -242,7 +244,7 @@ mod tests {
         let res = get_account(
             Path(addr.to_string()),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::default(),
         )
         .await;
 
@@ -268,7 +270,7 @@ mod tests {
         let res = get_account(
             Path(addr.to_string()),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::default(),
         )
         .await;
 
@@ -311,7 +313,7 @@ mod tests {
         let res = get_account_rewards(
             Path(":address:".to_string()),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::default(),
         );
 
         assert!(matches!(res.await, Ok(rewards) if rewards.len() == 1));
@@ -334,7 +336,7 @@ mod tests {
         let res = get_price(
             Path("CCD:USD".into()),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::default(),
         )
         .await
         .unwrap();
@@ -358,7 +360,7 @@ mod tests {
         let res = get_price(
             Path("".into()),
             Extension(Arc::new(repository)),
-            Claims::new(0),
+            Claims::default(),
         )
         .await;
 
