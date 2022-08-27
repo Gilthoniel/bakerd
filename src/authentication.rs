@@ -5,13 +5,14 @@ use axum::{
     response::{IntoResponse, Response},
     Json, TypedHeader,
 };
+use chrono::Utc;
 use jsonwebtoken::*;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
-const DEFAULT_EXPIRATION: u64 = 1 * 60 * 60;
+pub const DEFAULT_EXPIRATION: i64 = 1 * 60 * 60;
 
 // A definition of the authentication header containing a bearer token.
 type BearerHeader = TypedHeader<Authorization<Bearer>>;
@@ -48,16 +49,18 @@ pub enum Role {
 pub struct Claims {
     user_id: Option<i32>,
     roles: Option<Vec<Role>>,
-    exp: u64,
+    exp: i64,
 }
 
 impl Claims {
-    pub fn new(user_id: Option<i32>, roles: Option<Vec<Role>>) -> Self {
-        let mut claims = Self::default();
-        claims.user_id = user_id;
-        claims.roles = roles;
-
-        claims
+    pub fn builder() -> ClaimsBuilder {
+        ClaimsBuilder {
+            claims: Claims {
+                user_id: None,
+                roles: None,
+                exp: Utc::now().timestamp() + DEFAULT_EXPIRATION,
+            },
+        }
     }
 
     pub fn user_id(&self) -> Option<i32> {
@@ -75,23 +78,45 @@ impl Claims {
                 }
 
                 false
-            },
+            }
         }
     }
 
     /// It returns the timestamp in milliseconds of the expiration of the token.
     pub fn expiration(&self) -> i64 {
-        self.exp.try_into().unwrap_or(0) * 1000
+        self.exp * 1000
     }
 }
 
 impl Default for Claims {
     fn default() -> Self {
-        Self {
-            user_id: None,
-            roles: None,
-            exp: jsonwebtoken::get_current_timestamp() + DEFAULT_EXPIRATION,
-        }
+        Claims::builder().build()
+    }
+}
+
+pub struct ClaimsBuilder {
+    claims: Claims,
+}
+
+impl ClaimsBuilder {
+    pub fn expiration(mut self, timestamp: i64) -> Self {
+        self.claims.exp = timestamp;
+        self
+    }
+
+    pub fn user_id(mut self, id: i32) -> Self {
+        self.claims.user_id = Some(id);
+        self
+    }
+
+    #[cfg(test)]
+    pub fn roles(mut self, roles: Vec<Role>) -> Self {
+        self.claims.roles = Some(roles);
+        self
+    }
+
+    pub fn build(self) -> Claims {
+        self.claims
     }
 }
 

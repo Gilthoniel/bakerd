@@ -1,5 +1,5 @@
 use super::AppError;
-use crate::authentication::{generate_token, hash_password, Claims, Role};
+use crate::authentication::{generate_token, hash_password, Claims, Role, DEFAULT_EXPIRATION};
 use crate::model::{Session, User};
 use crate::repository::{models, DynUserRepository, RepositoryError};
 use axum::{extract::Extension, Json};
@@ -119,7 +119,10 @@ fn make_token(
     session: &Session,
     key: &EncodingKey,
 ) -> Result<Json<Authentication>, AppError> {
-    let claims = Claims::new(Some(user.get_id()), None);
+    let claims = Claims::builder()
+        .expiration(Utc::now().timestamp() + DEFAULT_EXPIRATION)
+        .user_id(user.get_id())
+        .build();
 
     match generate_token(&claims, &key) {
         Ok(token) => {
@@ -333,27 +336,33 @@ mod tests {
             .expect_get_by_id()
             .with(eq(42))
             .times(1)
-            .returning(|_| Ok(User::from(models::User {
-                id: 42,
-                username: "bob".to_string(),
-                password: hash_password("password"),
-            })));
+            .returning(|_| {
+                Ok(User::from(models::User {
+                    id: 42,
+                    username: "bob".to_string(),
+                    password: hash_password("password"),
+                }))
+            });
 
         repository
             .expect_use_session()
             .times(1)
-            .returning(|_, _, _| Ok(Session::from(models::Session {
-                id: "refresh-token".into(),
-                user_id: 42,
-                expiration_ms: 1500,
-                last_use_ms: 1000,
-            })));
+            .returning(|_, _, _| {
+                Ok(Session::from(models::Session {
+                    id: "refresh-token".into(),
+                    user_id: 42,
+                    expiration_ms: 1500,
+                    last_use_ms: 1000,
+                }))
+            });
 
         let res = refresh_token(
-            Extension(Arc::new(repository)), 
-            Extension(encoding_key), 
-            Claims::new(Some(42), None),
-            Json(Token{ refresh_token: "token".into() }), 
+            Extension(Arc::new(repository)),
+            Extension(encoding_key),
+            Claims::builder().user_id(42).build(),
+            Json(Token {
+                refresh_token: "token".into(),
+            }),
         );
 
         assert!(matches!(res.await, Ok(_)));
@@ -369,11 +378,13 @@ mod tests {
             .expect_get_by_id()
             .with(eq(42))
             .times(1)
-            .returning(|_| Ok(User::from(models::User {
-                id: 42,
-                username: "bob".to_string(),
-                password: hash_password("password"),
-            })));
+            .returning(|_| {
+                Ok(User::from(models::User {
+                    id: 42,
+                    username: "bob".to_string(),
+                    password: hash_password("password"),
+                }))
+            });
 
         repository
             .expect_use_session()
@@ -381,10 +392,12 @@ mod tests {
             .returning(|_, _, _| Err(RepositoryError::NotFound));
 
         let res = refresh_token(
-            Extension(Arc::new(repository)), 
-            Extension(encoding_key), 
-            Claims::new(Some(42), None),
-            Json(Token{ refresh_token: "token".into() }), 
+            Extension(Arc::new(repository)),
+            Extension(encoding_key),
+            Claims::builder().user_id(42).build(),
+            Json(Token {
+                refresh_token: "token".into(),
+            }),
         );
 
         assert!(matches!(res.await, Err(AppError::WrongCredentials)));
@@ -416,7 +429,7 @@ mod tests {
         let res = create_user(
             creds.into(),
             Extension(Arc::new(repository)),
-            Claims::new(None, Some(vec![Role::Admin])),
+            Claims::builder().roles(vec![Role::Admin]).build(),
         );
 
         assert!(matches!(res.await, Ok(_)));
@@ -434,7 +447,7 @@ mod tests {
         let res = create_user(
             creds.into(),
             Extension(Arc::new(repository)),
-            Claims::new(None, None),
+            Claims::default(),
         );
 
         assert!(matches!(res.await, Err(AppError::Forbidden)));
@@ -457,7 +470,7 @@ mod tests {
         let res = create_user(
             creds.into(),
             Extension(Arc::new(repository)),
-            Claims::new(None, Some(vec![Role::Admin])),
+            Claims::builder().roles(vec![Role::Admin]).build(),
         );
 
         assert!(matches!(res.await, Err(AppError::Internal)));
@@ -483,7 +496,7 @@ mod tests {
         let res = create_user(
             creds.into(),
             Extension(Arc::new(repository)),
-            Claims::new(None, Some(vec![Role::Admin])),
+            Claims::builder().roles(vec![Role::Admin]).build(),
         );
 
         assert!(matches!(res.await, Err(AppError::Internal)));
