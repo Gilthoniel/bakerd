@@ -75,8 +75,8 @@ pub async fn refresh_token(
         .use_session(&request.refresh_token, &user, now)
         .await
         .map_err(|e| {
-            error!("unable to use the session: {}", e);
-            AppError::Internal
+            error!("unable to use the session [{}]: {}", request.refresh_token, e);
+            AppError::WrongCredentials
         })?;
 
     make_token(&user, &session, &key)

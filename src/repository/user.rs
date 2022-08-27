@@ -6,7 +6,7 @@ use diesel::prelude::*;
 use diesel::result::Error;
 use std::sync::Arc;
 
-const SESSION_DURATION_MILLIS: i64 = 7 * 24 * 60 * 60;
+const SESSION_DURATION_MILLIS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 pub mod models {
     use crate::schema::user_sessions;
