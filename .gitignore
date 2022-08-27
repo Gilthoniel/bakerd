@@ -1,4 +1,5 @@
 /target
+/bakerd/usr/bin/bakerd
 
 # Ignore the Debian package.
 bakerd.deb

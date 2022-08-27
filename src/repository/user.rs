@@ -134,6 +134,7 @@ impl UserRepository for SqliteUserRepository {
                         // primary key is not updated.
                         .set((
                             session_dsl::id.eq(&new_session.id),
+                            session_dsl::expiration_ms.eq(&new_session.expiration_ms),
                             session_dsl::last_use_ms.eq(&new_session.last_use_ms),
                         ))
                         .execute(tx)?;
@@ -255,6 +256,42 @@ mod integration_tests {
             .await;
 
         assert!(matches!(res, Ok(s) if session.get_refresh_token() == s.get_refresh_token()));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_create_and_overwrite() {
+        let pool = AsyncPool::open(":memory:").unwrap();
+
+        pool.run_migrations().await.unwrap();
+
+        let repository = SqliteUserRepository::new(pool);
+
+        let user = {
+            let new_user = models::NewUser {
+                username: "bob".into(),
+                password: "some-hash".into(),
+            };
+
+            repository.create(new_user).await.unwrap();
+
+            repository.get("bob").await.unwrap()
+        };
+
+        repository
+            .create_session(&user, 1000)
+            .await
+            .unwrap();
+
+        let session = repository
+            .create_session(&user, 1200)
+            .await;
+
+        assert!(matches!(session, Ok(s) if s == Session::from(models::Session {
+            id: s.get_refresh_token().into(),
+            user_id: user.get_id(),
+            expiration_ms: 1200 + SESSION_DURATION_MILLIS,
+            last_use_ms: 1200,
+        })));
     }
 
     #[tokio::test(flavor = "multi_thread")]
