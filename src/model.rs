@@ -217,11 +217,16 @@ impl From<models::User> for User {
 #[derive(PartialEq, Debug)]
 pub struct Session {
     id: String,
+    user_id: i32,
     expiration_ms: i64,
     last_use_ms: i64,
 }
 
 impl Session {
+    pub fn get_user_id(&self) -> i32 {
+        self.user_id
+    }
+
     pub fn get_refresh_token(&self) -> &str {
         &self.id
     }
@@ -231,6 +236,7 @@ impl From<models::Session> for Session {
     fn from(s: models::Session) -> Self {
         Self {
             id: s.id,
+            user_id: s.user_id,
             expiration_ms: s.expiration_ms,
             last_use_ms: s.last_use_ms,
         }

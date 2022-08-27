@@ -63,10 +63,6 @@ impl Claims {
         }
     }
 
-    pub fn user_id(&self) -> Option<i32> {
-        self.user_id
-    }
-
     pub fn has_role(&self, role: Role) -> bool {
         match &self.roles {
             None => false,

@@ -61,18 +61,12 @@ pub struct Token {
 pub async fn refresh_token(
     Extension(repository): Extension<DynUserRepository>,
     Extension(key): Extension<Arc<EncodingKey>>,
-    claims: Claims,
     request: Json<Token>,
 ) -> Result<Json<Authentication>, AppError> {
-    let user = match claims.user_id() {
-        Some(id) => repository.get_by_id(id).await.map_err(map_wrong_creds)?,
-        None => return Err(AppError::WrongCredentials),
-    };
-
     let now = Utc::now().timestamp_millis();
 
     let session = repository
-        .use_session(&request.refresh_token, &user, now)
+        .use_session(&request.refresh_token, now)
         .await
         .map_err(|e| {
             error!(
@@ -81,6 +75,8 @@ pub async fn refresh_token(
             );
             AppError::WrongCredentials
         })?;
+
+    let user = repository.get_by_id(session.get_user_id()).await.map_err(map_wrong_creds)?;
 
     make_token(&user, &session, &key)
 }
@@ -333,6 +329,18 @@ mod tests {
         let mut repository = MockUserRepository::new();
 
         repository
+            .expect_use_session()
+            .times(1)
+            .returning(|_, _| {
+                Ok(Session::from(models::Session {
+                    id: "refresh-token".into(),
+                    user_id: 42,
+                    expiration_ms: 1500,
+                    last_use_ms: 1000,
+                }))
+            });
+
+        repository
             .expect_get_by_id()
             .with(eq(42))
             .times(1)
@@ -344,22 +352,9 @@ mod tests {
                 }))
             });
 
-        repository
-            .expect_use_session()
-            .times(1)
-            .returning(|_, _, _| {
-                Ok(Session::from(models::Session {
-                    id: "refresh-token".into(),
-                    user_id: 42,
-                    expiration_ms: 1500,
-                    last_use_ms: 1000,
-                }))
-            });
-
         let res = refresh_token(
             Extension(Arc::new(repository)),
             Extension(encoding_key),
-            Claims::builder().user_id(42).build(),
             Json(Token {
                 refresh_token: "token".into(),
             }),
@@ -375,26 +370,13 @@ mod tests {
         let mut repository = MockUserRepository::new();
 
         repository
-            .expect_get_by_id()
-            .with(eq(42))
-            .times(1)
-            .returning(|_| {
-                Ok(User::from(models::User {
-                    id: 42,
-                    username: "bob".to_string(),
-                    password: hash_password("password"),
-                }))
-            });
-
-        repository
             .expect_use_session()
             .times(1)
-            .returning(|_, _, _| Err(RepositoryError::NotFound));
+            .returning(|_, _| Err(RepositoryError::NotFound));
 
         let res = refresh_token(
             Extension(Arc::new(repository)),
             Extension(encoding_key),
-            Claims::builder().user_id(42).build(),
             Json(Token {
                 refresh_token: "token".into(),
             }),

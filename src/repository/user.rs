@@ -6,7 +6,7 @@ use diesel::prelude::*;
 use diesel::result::Error;
 use std::sync::Arc;
 
-const SESSION_DURATION_MILLIS: i64 = 30 * 24 * 60 * 60 * 1000;
+const SESSION_DURATION_MILLIS: i64 = 7 * 24 * 60 * 60 * 1000;
 
 pub mod models {
     use crate::schema::user_sessions;
@@ -56,7 +56,7 @@ pub trait UserRepository {
 
     async fn create_session(&self, user: &User, current_time_ms: i64) -> Result<Session>;
 
-    async fn use_session(&self, id: &str, user: &User, current_time_ms: i64) -> Result<Session>;
+    async fn use_session(&self, id: &str, current_time_ms: i64) -> Result<Session>;
 }
 
 pub type DynUserRepository = Arc<dyn UserRepository + Sync + Send>;
@@ -151,17 +151,16 @@ impl UserRepository for SqliteUserRepository {
         Ok(Session::from(res))
     }
 
-    /// It looks for a session for the user and update the last use field if
-    /// found then returns it. If the session is expired, an error is returned.
-    async fn use_session(&self, id: &str, user: &User, current_time_ms: i64) -> Result<Session> {
-        let user = models::UserID { id: user.get_id() };
+    /// It looks for a session with the given refresh token. If the session is
+    /// expired, an error is returned.
+    async fn use_session(&self, id: &str, current_time_ms: i64) -> Result<Session> {
         let id = id.to_string();
 
         let ret: models::Session = self
             .pool
             .exec(move |mut conn| {
                 conn.transaction(|tx| {
-                    let mut session: models::Session = models::Session::belonging_to(&user)
+                    let mut session: models::Session = session_dsl::user_sessions
                         .filter(session_dsl::id.eq(id))
                         .filter(session_dsl::expiration_ms.gt(current_time_ms))
                         .first(tx)?;
@@ -249,7 +248,7 @@ mod integration_tests {
         let session = repository.create_session(&user, 1000).await.unwrap();
 
         let res = repository
-            .use_session(session.get_refresh_token(), &user, 700)
+            .use_session(session.get_refresh_token(), 700)
             .await;
 
         assert!(matches!(res, Ok(s) if session.get_refresh_token() == s.get_refresh_token()));
@@ -312,7 +311,6 @@ mod integration_tests {
         let res = repository
             .use_session(
                 session.get_refresh_token(),
-                &user,
                 1500 + SESSION_DURATION_MILLIS,
             )
             .await;
