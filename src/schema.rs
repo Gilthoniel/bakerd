@@ -68,11 +68,11 @@ joinable!(account_rewards -> accounts (account_id));
 joinable!(user_sessions -> users (user_id));
 
 allow_tables_to_appear_in_same_query!(
-    account_rewards,
-    accounts,
-    blocks,
-    prices,
-    statuses,
-    user_sessions,
-    users,
+  account_rewards,
+  accounts,
+  blocks,
+  prices,
+  statuses,
+  user_sessions,
+  users,
 );
