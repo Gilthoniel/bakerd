@@ -142,6 +142,7 @@ impl From<models::Price> for Price {
 /// A block of the Concordium blockchain.
 #[derive(PartialEq, Clone, Serialize, Debug)]
 pub struct Block {
+  id: i32,
   height: i64,
   hash: String,
   slot_time_ms: i64,
@@ -157,6 +158,7 @@ impl Block {
 impl From<models::Block> for Block {
   fn from(record: models::Block) -> Self {
     Self {
+      id: record.id,
       height: record.height,
       hash: record.hash,
       slot_time_ms: record.slot_time_ms,
