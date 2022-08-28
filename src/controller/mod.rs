@@ -1,16 +1,19 @@
 pub mod auth;
 
 use crate::authentication::Claims;
-use crate::model::{Account, Price, Reward, Status};
-use crate::repository::{DynAccountRepository, DynPriceRepository, DynStatusRepository, RepositoryError};
+use crate::model::{Account, Block, Price, Reward, Status};
+use crate::repository::*;
 use axum::{
-  extract::{Extension, Path},
+  extract::{Extension, Path, Query},
   http::StatusCode,
   response::{IntoResponse, Response},
   Json,
 };
 use log::error;
+use serde::Deserialize;
 use serde_json::json;
+
+type Result<T> = std::result::Result<T, AppError>;
 
 /// An global definition of errors for the application.
 #[derive(Debug)]
@@ -47,7 +50,7 @@ impl IntoResponse for AppError {
 pub async fn get_status(
   Extension(repository): Extension<DynStatusRepository>,
   _: Claims,
-) -> Result<Json<Status>, AppError> {
+) -> Result<Json<Status>> {
   let status = repository.get_last_report().await.map_err(map_internal_error)?;
 
   Ok(status.into())
@@ -58,7 +61,7 @@ pub async fn get_account(
   Path(addr): Path<String>,
   Extension(repo): Extension<DynAccountRepository>,
   _: Claims,
-) -> Result<Json<Account>, AppError> {
+) -> Result<Json<Account>> {
   let account = repo.get_account(&addr).await.map_err(map_account_error)?;
 
   Ok(account.into())
@@ -69,7 +72,7 @@ pub async fn get_account_rewards(
   Path(addr): Path<String>,
   Extension(repository): Extension<DynAccountRepository>,
   _: Claims,
-) -> Result<Json<Vec<Reward>>, AppError> {
+) -> Result<Json<Vec<Reward>>> {
   let account = repository.get_account(&addr).await.map_err(map_account_error)?;
 
   let rewards = repository.get_rewards(&account).await.map_err(map_internal_error)?;
@@ -83,7 +86,7 @@ pub async fn get_price(
   Path(pair): Path<String>,
   Extension(repository): Extension<DynPriceRepository>,
   _: Claims,
-) -> Result<Json<Price>, AppError> {
+) -> Result<Json<Price>> {
   // Split the identifier into the two parts. If unsuccessful, an default
   // empty pair is returned.
   let parts = pair.as_str().split_once(':').unwrap_or(("", ""));
@@ -98,6 +101,29 @@ pub async fn get_price(
   })?;
 
   Ok(price.into())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockFilter {
+  baker: Option<i64>,
+  since_ms: Option<i64>,
+}
+
+/// A controller to return the list of blocks indexed in the storage. The list can be filtered by
+/// baker and slot time.
+pub async fn get_blocks(
+  params: Query<BlockFilter>,
+  repository: Extension<DynBlockRepository>,
+  _: Claims,
+) -> Result<Json<Vec<Block>>> {
+  let filter = models::BlockFilter {
+    baker: params.baker,
+    since_ms: params.since_ms,
+  };
+
+  let blocks = repository.get_all(filter).await.map_err(map_internal_error)?;
+
+  Ok(blocks.into())
 }
 
 fn map_internal_error(e: RepositoryError) -> AppError {
@@ -337,5 +363,36 @@ mod tests {
     let res = get_price(Path("".into()), Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::PriceNotFound)));
+  }
+
+  #[tokio::test]
+  async fn test_get_blocks() {
+    let mut repository = MockBlockRepository::new();
+
+    repository
+      .expect_get_all()
+      .with(eq(models::BlockFilter{
+        baker: Some(42),
+        since_ms: Some(1200),
+      }))
+      .times(1)
+      .returning(|_| Ok(vec![
+        Block::from(models::Block {
+          id: 1,
+          height: 100,
+          hash: ":hash-block-100:".into(),
+          slot_time_ms: 1500,
+          baker: 42,
+        }),
+      ]));
+
+    let filter = BlockFilter{
+      baker: Some(42),
+      since_ms: Some(1200),
+    };
+
+    let res = get_blocks(Query(filter), Extension(Arc::new(repository)), Claims::default()).await;
+
+    assert!(matches!(&res, Ok(_)), "wrong result: {:?}", res);
   }
 }

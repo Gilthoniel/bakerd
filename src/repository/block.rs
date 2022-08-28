@@ -27,6 +27,7 @@ pub mod models {
     pub baker: i64,
   }
 
+  #[derive(PartialEq, Debug)]
   pub struct BlockFilter {
     pub baker: Option<i64>,
     pub since_ms: Option<i64>,
@@ -37,10 +38,13 @@ pub mod models {
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait BlockRepository {
+  /// It returns the latest block indexed in the storage.
   async fn get_last_block(&self) -> Result<Block>;
 
+  /// It returns the blocks indexed in the storage or a subset if filters are provided.
   async fn get_all(&self, filter: models::BlockFilter) -> Result<Vec<Block>>;
 
+  /// It indexes a new block.
   async fn store(&self, block: models::NewBlock) -> Result<()>;
 
   /// It deletes the block with a height below the given value.

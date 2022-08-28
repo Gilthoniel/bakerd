@@ -183,6 +183,7 @@ async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
     .route("/accounts/:addr", get(controller::get_account))
     .route("/accounts/:addr/rewards", get(controller::get_account_rewards))
     .route("/prices/:pair", get(controller::get_price))
+    .route("/blocks", get(controller::get_blocks))
     .layer(Extension(ctx.account_repository.clone()))
     .layer(Extension(ctx.price_repository.clone()))
     .layer(Extension(ctx.block_repository.clone()))
