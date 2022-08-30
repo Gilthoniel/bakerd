@@ -1,3 +1,13 @@
+mod authentication;
+mod client;
+mod config;
+mod controller;
+mod job;
+mod model;
+mod repository;
+mod schema;
+
+use crate::client::bitfinex;
 use crate::config::Config;
 use crate::job::Jobber;
 use crate::repository::*;
@@ -21,35 +31,10 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate async_trait;
 
-mod authentication;
-mod client;
-mod config;
-mod controller;
-mod job;
-mod model;
-mod repository;
-mod schema;
+// A result type alias for the main application.
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-struct Context {
-  account_repository: DynAccountRepository,
-  price_repository: DynPriceRepository,
-  block_repository: DynBlockRepository,
-  status_repository: DynStatusRepository,
-  user_repository: DynUserRepository,
-}
-
-impl Context {
-  fn new(pool: &AsyncPool) -> Self {
-    Self {
-      account_repository: Arc::new(SqliteAccountRepository::new(pool.clone())),
-      price_repository: Arc::new(SqlitePriceRepository::new(pool.clone())),
-      block_repository: Arc::new(SqliteBlockRepository::new(pool.clone())),
-      status_repository: Arc::new(SqliteStatusRepository::new(pool.clone())),
-      user_repository: Arc::new(SqliteUserRepository::new(pool.clone())),
-    }
-  }
-}
-
+// Command-line arguments of the application.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -73,8 +58,38 @@ impl Default for Args {
   }
 }
 
+struct Dependencies {
+  args: Args,
+  cfg: Config,
+  account: DynAccountRepository,
+  price: DynPriceRepository,
+  block: DynBlockRepository,
+  status: DynStatusRepository,
+  user: DynUserRepository,
+}
+
+impl Dependencies {
+  async fn make(args: Args, cfg: Config) -> Result<Self> {
+    let pool = AsyncPool::open(&args.data_dir)?;
+
+    // Always run the migration to make sure the application is ready to use the
+    // storage.
+    pool.run_migrations().await?;
+
+    Ok(Dependencies {
+      args,
+      cfg,
+      account: Arc::new(SqliteAccountRepository::new(pool.clone())),
+      price: Arc::new(SqlitePriceRepository::new(pool.clone())),
+      block: Arc::new(SqliteBlockRepository::new(pool.clone())),
+      status: Arc::new(SqliteStatusRepository::new(pool.clone())),
+      user: Arc::new(SqliteUserRepository::new(pool.clone())),
+    })
+  }
+}
+
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<()> {
   env_logger::init_from_env(Env::default().default_filter_or("info"));
 
   #[cfg(not(test))]
@@ -85,6 +100,8 @@ async fn main() -> std::io::Result<()> {
 
   let cfg = Config::from_file(&args.config_file)?;
 
+  let deps = Dependencies::make(args, cfg).await?;
+
   #[cfg(not(test))]
   let termination = async {
     tokio::signal::ctrl_c().await.unwrap();
@@ -94,19 +111,19 @@ async fn main() -> std::io::Result<()> {
   #[cfg(test)]
   let termination = async {};
 
-  run_server(&cfg, &args, termination).await.unwrap();
+  run_server(&deps, termination).await?;
 
   Ok(())
 }
 
-async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
+async fn prepare_jobs(deps: &Dependencies) -> Jobber {
   let mut scheduler = job::Scheduler::new();
 
-  let price_client = client::bitfinex::BitfinexClient::default();
+  let price_client = bitfinex::BitfinexClient::default();
 
-  let node_client = client::node::Client::new("http://127.0.0.1:10000");
+  let node_client = deps.cfg.make_client();
 
-  for (name, schedule_str) in cfg.get_jobs().unwrap_or(&HashMap::new()) {
+  for (name, schedule_str) in deps.cfg.get_jobs().unwrap_or(&HashMap::new()) {
     let schedule = cron::Schedule::from_str(&schedule_str).unwrap();
 
     scheduler.register(
@@ -114,38 +131,34 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
       schedule,
       match name {
         config::Job::AccountsRefresher => {
-          let mut job = job::account::RefreshAccountsJob::new(node_client.clone(), ctx.account_repository.clone());
+          let mut job = job::account::RefreshAccountsJob::new(node_client.clone(), deps.account.clone());
 
-          for address in cfg.get_accounts().unwrap_or(&vec![]) {
+          for address in deps.cfg.get_accounts().unwrap_or(&vec![]) {
             job.follow_account(address);
           }
 
           Box::new(job)
         }
         config::Job::PriceRefresher => {
-          let mut job = job::price::PriceRefresher::new(price_client.clone(), ctx.price_repository.clone());
+          let mut job = job::price::PriceRefresher::new(price_client.clone(), deps.price.clone());
 
-          for pair in cfg.get_pairs().unwrap_or(&vec![]) {
+          for pair in deps.cfg.get_pairs().unwrap_or(&vec![]) {
             job.follow_pair(pair.clone());
           }
 
           Box::new(job)
         }
         config::Job::BlockFetcher => {
-          let mut job = job::block::BlockFetcher::new(
-            node_client.clone(),
-            ctx.block_repository.clone(),
-            ctx.account_repository.clone(),
-          );
+          let mut job = job::block::BlockFetcher::new(node_client.clone(), deps.block.clone(), deps.account.clone());
 
-          for address in cfg.get_accounts().unwrap_or(&vec![]) {
+          for address in deps.cfg.get_accounts().unwrap_or(&vec![]) {
             job.follow_account(address);
           }
 
           Box::new(job)
         }
         config::Job::StatusChecker => Box::new(job::status::StatusChecker::new(
-          ctx.status_repository.clone(),
+          deps.status.clone(),
           node_client.clone(),
         )),
       },
@@ -155,57 +168,40 @@ async fn prepare_jobs(cfg: &Config, ctx: &Context) -> Jobber {
   scheduler.start()
 }
 
-async fn prepare_context(data_dir: &str) -> std::result::Result<Context, PoolError> {
-  let pool = AsyncPool::open(data_dir)?;
-
-  // Always run the migration to make sure the application is ready to use the
-  // storage.
-  pool.run_migrations().await?;
-
-  Ok(Context::new(&pool))
-}
-
 /// It creates an application and registers the different routes.
-async fn create_app(ctx: &Context, cfg: &Config, args: &Args) -> Router {
-  let decoding_key = cfg
-    .get_decoding_key(args.secret_file.as_ref().map(|p| p.as_ref()))
-    .expect("unable to read decoding key");
+async fn create_app(deps: &Dependencies) -> Result<Router> {
+  let secret_file = deps.args.secret_file.as_ref().map(|p| p.as_ref());
 
-  let encoding_key = cfg
-    .get_encoding_key(args.secret_file.as_ref().map(|p| p.as_ref()))
-    .expect("unable to read encoding key");
+  let decoding_key = deps.cfg.get_decoding_key(secret_file)?;
+  let encoding_key = deps.cfg.get_encoding_key(secret_file)?;
 
-  Router::new()
-    .route("/", get(controller::get_status))
-    .route("/auth/authorize", post(controller::auth::authorize))
-    .route("/auth/token", post(controller::auth::refresh_token))
-    .route("/users", post(controller::auth::create_user))
-    .route("/accounts/:addr", get(controller::get_account))
-    .route("/accounts/:addr/rewards", get(controller::get_account_rewards))
-    .route("/prices/:pair", get(controller::get_price))
-    .route("/blocks", get(controller::get_blocks))
-    .layer(Extension(ctx.account_repository.clone()))
-    .layer(Extension(ctx.price_repository.clone()))
-    .layer(Extension(ctx.block_repository.clone()))
-    .layer(Extension(ctx.status_repository.clone()))
-    .layer(Extension(ctx.user_repository.clone()))
-    .layer(Extension(Arc::new(encoding_key)))
-    .layer(Extension(Arc::new(decoding_key)))
+  Ok(
+    Router::new()
+      .route("/", get(controller::get_status))
+      .route("/auth/authorize", post(controller::auth::authorize))
+      .route("/auth/token", post(controller::auth::refresh_token))
+      .route("/users", post(controller::auth::create_user))
+      .route("/accounts/:addr", get(controller::get_account))
+      .route("/accounts/:addr/rewards", get(controller::get_account_rewards))
+      .route("/prices/:pair", get(controller::get_price))
+      .route("/blocks", get(controller::get_blocks))
+      .layer(Extension(deps.account.clone()))
+      .layer(Extension(deps.price.clone()))
+      .layer(Extension(deps.block.clone()))
+      .layer(Extension(deps.status.clone()))
+      .layer(Extension(deps.user.clone()))
+      .layer(Extension(Arc::new(encoding_key)))
+      .layer(Extension(Arc::new(decoding_key))),
+  )
 }
 
 /// It schedules the different jobs from the configuration and start the server.
 /// The binding address is defined by the configuration.
-async fn run_server(
-  cfg: &Config,
-  args: &Args,
-  termination: impl std::future::Future<Output = ()>,
-) -> std::result::Result<(), PoolError> {
-  let ctx = prepare_context(&args.data_dir).await?;
+async fn run_server(deps: &Dependencies, termination: impl std::future::Future<Output = ()>) -> Result<()> {
+  let jobber = prepare_jobs(deps).await;
 
-  let jobber = prepare_jobs(cfg, &ctx).await;
-
-  axum::Server::bind(cfg.get_listen_addr())
-    .serve(create_app(&ctx, &cfg, args).await.into_make_service())
+  axum::Server::bind(deps.cfg.get_listen_addr())
+    .serve(create_app(deps).await?.into_make_service())
     .with_graceful_shutdown(termination)
     .await
     .unwrap();
@@ -239,11 +235,39 @@ mod integration_tests {
   }
 
   /// It makes sure that known job can be scheduled without error.
-  #[tokio::test]
+  #[tokio::test(flavor = "multi_thread")]
   async fn test_prepare_jobs() {
     let values = concat!(
       "listen_address: 127.0.0.1:8080\n",
-      "secret: \"abc\"\n",
+      "jobs:\n",
+      "  accounts_refresher: \"* * * * * * 1970\"\n",
+      "  price_refresher: \"* * * * * * 1970\"\n",
+      "pairs:\n",
+      "  - [\"BTC\", \"USD\"]\n"
+    );
+
+    let mut values = values.as_bytes();
+
+    let mut args = Args::default();
+    args.data_dir = ":memory:".into();
+
+    let deps = Dependencies::make(args, Config::from_reader(&mut values).unwrap())
+      .await
+      .unwrap();
+
+    let jobber = prepare_jobs(&deps).await;
+
+    jobber.shutdown().await;
+  }
+
+  /// It makes sure the server can bind the address.
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_run_server() {
+    let values = concat!(
+      "listen_address: 127.0.0.1:0\n",
+      "client:\n",
+      "  uri: \"127.0.0.1:10000\"\n",
+      "  token: \"rpcadmin\"\n",
       "jobs:\n",
       "  accounts_refresher: \"* * * * * * 1970\"\n",
       "  price_refresher: \"* * * * * * 1970\"\n",
@@ -255,21 +279,12 @@ mod integration_tests {
 
     let cfg = Config::from_reader(&mut values).unwrap();
 
-    let pool = AsyncPool::open(":memory:").unwrap();
-
-    let jobber = prepare_jobs(&cfg, &Context::new(&pool)).await;
-
-    jobber.shutdown().await;
-  }
-
-  /// It makes sure the server can bind the address.
-  #[tokio::test(flavor = "multi_thread")]
-  async fn test_run_server() {
-    let cfg = Config::default();
     let mut args = Args::default();
     args.data_dir = ":memory:".to_string();
 
-    run_server(&cfg, &args, async {}).await.unwrap();
+    let deps = Dependencies::make(args, cfg).await.unwrap();
+
+    run_server(&deps, async {}).await.unwrap();
   }
 
   #[tokio::test(flavor = "multi_thread")]
@@ -285,12 +300,13 @@ mod integration_tests {
     let token =
       authentication::generate_token(&Claims::default(), &cfg.get_encoding_key(secret_file.to_str()).unwrap()).unwrap();
 
-    let ctx = prepare_context(":memory:").await.unwrap();
-
     let mut args = Args::default();
     args.secret_file = secret_file.to_str().map(String::from);
+    args.data_dir = ":memory:".into();
 
-    let app = create_app(&ctx, &cfg, &args).await;
+    let deps = Dependencies::make(args, cfg).await.unwrap();
+
+    let app = create_app(&deps).await.unwrap();
 
     let response = app
       .oneshot(

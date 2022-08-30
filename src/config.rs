@@ -1,3 +1,4 @@
+use crate::client::{node::Client, DynNodeClient};
 use crate::model::Pair;
 use jsonwebtoken::{errors, DecodingKey, EncodingKey};
 use serde::Deserialize;
@@ -5,6 +6,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use std::net::SocketAddr;
+use tonic::{metadata::AsciiMetadataValue, transport::Uri};
 
 const DEFAULT_SECRET: &str = "IUBePnVgKXFPc2QzZTRuSykuQic5IUt8QlY=";
 
@@ -28,9 +30,36 @@ impl Job {
   }
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ClientCfg {
+  #[serde(with = "serde_with::rust::display_fromstr")]
+  uri: Uri,
+
+  #[serde(with = "serde_with::rust::display_fromstr")]
+  token: AsciiMetadataValue,
+}
+
+impl ClientCfg {
+  pub fn as_client(&self) -> DynNodeClient {
+    Client::new(&self.uri, &self.token)
+  }
+}
+
+/// An implementation of the default values for the node client configuration. It follows the
+/// default setup of a Concordium node.
+impl Default for ClientCfg {
+  fn default() -> Self {
+    Self {
+      uri: Uri::from_static("127.0.0.1:10000"),
+      token: AsciiMetadataValue::from_static("rpcadmin"),
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
   listen_address: SocketAddr,
+  client: Option<ClientCfg>,
   jobs: Option<HashMap<Job, String>>,
   pairs: Option<Vec<Pair>>,
   accounts: Option<Vec<String>>,
@@ -73,6 +102,13 @@ impl Config {
     self.accounts.as_ref()
   }
 
+  pub fn make_client(&self) -> DynNodeClient {
+    match &self.client {
+      None => ClientCfg::default().as_client(),
+      Some(cfg) => cfg.as_client(),
+    }
+  }
+
   fn read_secret<T>(&self, path: Option<&str>, from: impl FnOnce(&str) -> errors::Result<T>) -> io::Result<T> {
     let key = match path {
       Some(path) => {
@@ -94,6 +130,7 @@ impl Default for Config {
   fn default() -> Self {
     Self {
       listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
+      client: Some(ClientCfg::default()),
       jobs: None,
       pairs: None,
       accounts: None,

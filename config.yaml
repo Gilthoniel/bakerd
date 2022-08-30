@@ -1,4 +1,7 @@
 listen_address: 127.0.0.1:8080
+client:
+  uri: 127.0.0.1:8080
+  token: rpcadmin
 pairs:
   - ["BTC", "USD"]
   - ["CCD", "USD"]

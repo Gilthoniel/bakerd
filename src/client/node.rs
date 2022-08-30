@@ -4,13 +4,14 @@ use ccd::p2p_client::P2pClient;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use std::str::FromStr;
 use std::sync::Arc;
 use tonic::codegen::InterceptedService;
-use tonic::metadata::Ascii;
 use tonic::service::Interceptor;
-use tonic::transport::Uri;
-use tonic::{metadata::MetadataValue, transport::Channel, Request, Status};
+use tonic::{
+  metadata::AsciiMetadataValue,
+  transport::{Channel, Uri},
+  Request, Status,
+};
 
 mod ccd {
   tonic::include_proto!("concordium");
@@ -133,12 +134,10 @@ pub struct Client {
 }
 
 impl Client {
-  pub fn new(addr: &str) -> DynNodeClient {
-    // TODO: remove unwrap.
-    let uri = Uri::from_str(addr).unwrap();
-    let channel = Channel::builder(uri).connect_lazy();
+  pub fn new(uri: &Uri, token: &AsciiMetadataValue) -> DynNodeClient {
+    let channel = Channel::builder(uri.clone()).connect_lazy();
 
-    let client = P2pClient::with_interceptor(channel, Authorization::new());
+    let client = P2pClient::with_interceptor(channel, Authorization::new(token));
 
     Arc::new(Client {
       client,
@@ -297,12 +296,13 @@ impl NodeClient for Client {
 
 #[derive(Clone)]
 struct Authorization {
-  token: MetadataValue<Ascii>,
+  token: AsciiMetadataValue,
 }
 
 impl Authorization {
-  fn new() -> Self {
-    let token = MetadataValue::try_from("rpcadmin").expect("authorization token is malformed");
+  fn new(token: &AsciiMetadataValue) -> Self {
+    let mut token = token.clone();
+    token.set_sensitive(true);
 
     Authorization {
       token,
@@ -339,6 +339,7 @@ mod integration_tests {
   use super::*;
   use crate::client::Error;
   use mockall::predicate::*;
+  use std::str::FromStr;
   use tonic::{Request, Response, Status};
 
   type JsonResponse = std::result::Result<Response<ccd::JsonResponse>, Status>;
@@ -381,7 +382,10 @@ mod integration_tests {
         .unwrap();
     });
 
-    Ok(Client::new(&format!("http://[::1]:{}", port)))
+    let uri = Uri::from_str(&format!("http://[::1]:{}", port)).unwrap();
+    let token = AsciiMetadataValue::from_static("rpcadmin");
+
+    Ok(Client::new(&uri, &token))
   }
 
   #[tokio::test]
@@ -587,7 +591,10 @@ mod integration_tests {
 
   #[tokio::test]
   async fn test_get_account_info_no_network() {
-    let client = Client::new("http://[::1]:8888");
+    let client = Client::new(
+      &Uri::from_static("http://[::1]:8888"),
+      &AsciiMetadataValue::from_static(""),
+    );
 
     let res = client.get_account_info("hash", "addr").await;
 

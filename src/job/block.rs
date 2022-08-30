@@ -67,6 +67,8 @@ impl BlockFetcher {
   async fn do_rewards(&self, block_info: &BlockInfo) -> Status {
     let summary = self.client.get_block_summary(&block_info.block_hash).await?;
 
+    // TODO: tag account for update.
+
     for event in summary.special_events {
       if event.tag != EVENT_TAG_REWARD {
         continue;

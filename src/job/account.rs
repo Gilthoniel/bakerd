@@ -58,6 +58,8 @@ impl RefreshAccountsJob {
 #[async_trait]
 impl AsyncJob for RefreshAccountsJob {
   async fn execute(&self) -> Status {
+    // TODO: find account for update.
+
     for address in &self.addresses {
       self.do_account(address).await?;
     }

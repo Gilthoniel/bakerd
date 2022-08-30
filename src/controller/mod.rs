@@ -47,10 +47,7 @@ impl IntoResponse for AppError {
 }
 
 /// A controller to return the status of the application.
-pub async fn get_status(
-  Extension(repository): Extension<DynStatusRepository>,
-  _: Claims,
-) -> Result<Json<Status>> {
+pub async fn get_status(Extension(repository): Extension<DynStatusRepository>, _: Claims) -> Result<Json<Status>> {
   let status = repository.get_last_report().await.map_err(map_internal_error)?;
 
   Ok(status.into())
@@ -371,22 +368,22 @@ mod tests {
 
     repository
       .expect_get_all()
-      .with(eq(models::BlockFilter{
+      .with(eq(models::BlockFilter {
         baker: Some(42),
         since_ms: Some(1200),
       }))
       .times(1)
-      .returning(|_| Ok(vec![
-        Block::from(models::Block {
+      .returning(|_| {
+        Ok(vec![Block::from(models::Block {
           id: 1,
           height: 100,
           hash: ":hash-block-100:".into(),
           slot_time_ms: 1500,
           baker: 42,
-        }),
-      ]));
+        })])
+      });
 
-    let filter = BlockFilter{
+    let filter = BlockFilter {
       baker: Some(42),
       since_ms: Some(1200),
     };
