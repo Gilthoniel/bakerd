@@ -4,7 +4,7 @@ use crate::client::DynNodeClient;
 use crate::repository::{models, DynAccountRepository, DynBlockRepository};
 use log::{info, warn};
 use rust_decimal::Decimal;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 const EVENT_TAG_REWARD: &str = "PaydayAccountReward";
 
@@ -14,7 +14,6 @@ pub struct BlockFetcher {
   client: DynNodeClient,
   block_repository: DynBlockRepository,
   account_repository: DynAccountRepository,
-  accounts: HashSet<String>,
 }
 
 impl BlockFetcher {
@@ -27,14 +26,7 @@ impl BlockFetcher {
       client,
       block_repository,
       account_repository,
-      accounts: HashSet::new(),
     }
-  }
-
-  /// It adds an address of an account to be updated according to the latest
-  /// data on the blockchain.
-  pub fn follow_account(&mut self, address: &str) {
-    self.accounts.insert(address.into());
   }
 
   /// It processes a block by fetching the data about it and analyzes it to
@@ -67,7 +59,7 @@ impl BlockFetcher {
   async fn do_rewards(&self, block_info: &BlockInfo) -> Status {
     let summary = self.client.get_block_summary(&block_info.block_hash).await?;
 
-    // TODO: tag account for update.
+    let mut rewards = HashMap::new();
 
     for event in summary.special_events {
       if event.tag != EVENT_TAG_REWARD {
@@ -75,20 +67,22 @@ impl BlockFetcher {
       }
 
       if let Some(addr) = &event.account {
-        if !self.accounts.contains(addr) {
-          continue;
-        }
+        rewards.insert(
+          addr.clone(),
+          (to_amount(event.baker_reward), to_amount(event.transaction_fees)),
+        );
+      }
+    }
 
-        info!("found reward for account `{}`", addr);
+    let accounts = self.account_repository.get_all(rewards.keys().collect()).await?;
 
-        // Get the account associated with the reward to get the ID.
-        let account = self.account_repository.get_account(addr).await?;
-
+    for account in accounts {
+      if let Some((baker, fees)) = rewards.get(account.get_address()) {
         // 1. Insert the baker reward.
         let baker_reward = models::NewReward {
           account_id: account.get_id(),
           block_hash: block_info.block_hash.clone(),
-          amount: to_amount(event.baker_reward),
+          amount: baker.clone(),
           epoch_ms: block_info.block_slot_time.timestamp_millis(),
           kind: models::RewardKind::Baker,
         };
@@ -99,7 +93,7 @@ impl BlockFetcher {
         let tx_fee = models::NewReward {
           account_id: account.get_id(),
           block_hash: block_info.block_hash.clone(),
-          amount: to_amount(event.transaction_fees),
+          amount: fees.clone(),
           epoch_ms: block_info.block_slot_time.timestamp_millis(),
           kind: models::RewardKind::TransactionFee,
         };
@@ -190,13 +184,22 @@ mod tests {
 
     client.expect_get_block_summary().times(1).returning(|_| {
       Ok(BlockSummary {
-        special_events: vec![Event {
-          tag: EVENT_TAG_REWARD.to_string(),
-          account: Some(":address:".to_string()),
-          baker_reward: Some(dec!(2.5)),
-          transaction_fees: Some(dec!(0.125)),
-          finalization_reward: None,
-        }],
+        special_events: vec![
+          Event {
+            tag: EVENT_TAG_REWARD.to_string(),
+            account: Some(":address-1:".to_string()),
+            baker_reward: Some(dec!(2.5)),
+            transaction_fees: Some(dec!(0.125)),
+            finalization_reward: None,
+          },
+          Event {
+            tag: EVENT_TAG_REWARD.to_string(),
+            account: Some(":address-2:".to_string()),
+            baker_reward: Some(dec!(5)),
+            transaction_fees: Some(dec!(1.2)),
+            finalization_reward: None,
+          },
+        ],
       })
     });
 
@@ -222,25 +225,36 @@ mod tests {
 
     let mut account_repository = MockAccountRepository::new();
 
-    account_repository.expect_get_account().times(1).returning(|_| {
-      Ok(Account::from(models::Account {
-        id: 1,
-        address: ":address:".to_string(),
-        available_amount: "0".to_string(),
-        staked_amount: "0".to_string(),
-        lottery_power: 0.0,
-      }))
-    });
+    account_repository
+      .expect_get_all()
+      .withf(|addrs| addrs.len() == 2)
+      .times(1)
+      .returning(|_| {
+        Ok(vec![
+          Account::from(models::Account {
+            id: 1,
+            address: ":address-1:".to_string(),
+            available_amount: "0".to_string(),
+            staked_amount: "0".to_string(),
+            lottery_power: 0.0,
+          }),
+          Account::from(models::Account {
+            id: 2,
+            address: ":address-3:".to_string(),
+            available_amount: "0".to_string(),
+            staked_amount: "0".to_string(),
+            lottery_power: 0.0,
+          }),
+        ])
+      });
 
     account_repository.expect_set_reward().times(2).returning(|_| Ok(()));
 
-    let mut job = BlockFetcher::new(
+    let job = BlockFetcher::new(
       Arc::new(client),
       Arc::new(block_repository),
       Arc::new(account_repository),
     );
-
-    job.follow_account(":address:");
 
     let res = job.execute().await;
 

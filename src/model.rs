@@ -18,6 +18,10 @@ impl Account {
   pub fn get_id(&self) -> i32 {
     return self.id;
   }
+
+  pub fn get_address(&self) -> &str {
+    return &self.address;
+  }
 }
 
 impl From<models::Account> for Account {

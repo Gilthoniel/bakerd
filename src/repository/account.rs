@@ -100,6 +100,9 @@ pub trait AccountRepository {
   /// It returns the account associated to the address if it exists.
   async fn get_account(&self, addr: &str) -> Result<Account>;
 
+  /// It returns the list of accounts associated with the addresses.
+  async fn get_all<'a>(&self, addrs: Vec<&'a String>) -> Result<Vec<Account>>;
+
   /// It creates or updates an existing account using the address as the
   /// identifier.
   async fn set_account(&self, account: models::NewAccount) -> Result<()>;
@@ -146,6 +149,18 @@ impl AccountRepository for SqliteAccountRepository {
       })?;
 
     Ok(Account::from(record))
+  }
+
+  /// It returns the list of accounts associated with the addresses.
+  async fn get_all<'a>(&self, addrs: Vec<&'a String>) -> Result<Vec<Account>> {
+    let addrs: Vec<String> = addrs.into_iter().map(String::from).collect();
+
+    let records: Vec<models::Account> = self
+      .pool
+      .exec(|mut conn| accounts.filter(address.eq_any(addrs)).load(&mut conn))
+      .await?;
+
+    Ok(records.into_iter().map(Account::from).collect())
   }
 
   async fn set_account(&self, account: models::NewAccount) -> Result<()> {
@@ -219,15 +234,50 @@ mod integration_tests {
       lottery_power: expect.lottery_power,
     };
 
-    let repo = SqliteAccountRepository::new(pool);
+    let repository = SqliteAccountRepository::new(pool);
 
     // 1. Create an account.
-    assert!(matches!(repo.set_account(account).await, Ok(_)),);
+    assert!(matches!(repository.set_account(account).await, Ok(_)),);
 
     // 2. Get the account.
-    let res = repo.get_account(":address:").await.unwrap();
+    let res = repository.get_account(":address:").await.unwrap();
 
     assert_eq!(Account::from(expect), res);
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_all() -> Result<()> {
+    let pool = AsyncPool::open(":memory:")?;
+
+    pool.run_migrations().await?;
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    repository
+      .set_account(models::NewAccount {
+        address: ":address-1:".into(),
+        available_amount: "0".into(),
+        staked_amount: "1".into(),
+        lottery_power: 0.2,
+      })
+      .await?;
+
+    repository
+      .set_account(models::NewAccount {
+        address: ":address-2:".into(),
+        available_amount: "42".into(),
+        staked_amount: "2".into(),
+        lottery_power: 0.2,
+      })
+      .await?;
+
+    let addresses = vec![":address-1:".to_string(), ":address-2:".to_string()];
+
+    let res = repository.get_all(addresses.iter().collect()).await?;
+
+    assert_eq!(res.len(), 2);
+
+    Ok(())
   }
 
   #[tokio::test(flavor = "multi_thread")]

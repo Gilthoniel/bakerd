@@ -148,15 +148,11 @@ async fn prepare_jobs(deps: &Dependencies) -> Jobber {
 
           Box::new(job)
         }
-        config::Job::BlockFetcher => {
-          let mut job = job::block::BlockFetcher::new(node_client.clone(), deps.block.clone(), deps.account.clone());
-
-          for address in deps.cfg.get_accounts().unwrap_or(&vec![]) {
-            job.follow_account(address);
-          }
-
-          Box::new(job)
-        }
+        config::Job::BlockFetcher => Box::new(job::block::BlockFetcher::new(
+          node_client.clone(),
+          deps.block.clone(),
+          deps.account.clone(),
+        )),
         config::Job::StatusChecker => Box::new(job::status::StatusChecker::new(
           deps.status.clone(),
           node_client.clone(),
