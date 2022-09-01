@@ -1,6 +1,6 @@
 pub mod auth;
 
-use crate::authentication::Claims;
+use crate::authentication::{Claims, Role};
 use crate::model::{Account, Block, Price, Reward, Status};
 use crate::repository::*;
 use axum::{
@@ -58,12 +58,15 @@ pub struct CreateAccount {
   address: String,
 }
 
+/// A controller to create an account that will be followed by the daemon.
 pub async fn create_account(
   request: Json<CreateAccount>,
   repository: Extension<DynAccountRepository>,
   claims: Claims,
 ) -> Result<Json<Account>> {
-  // TODO: check claims
+  if !claims.has_role(Role::Admin) {
+    return Err(AppError::Forbidden);
+  }
 
   let new_account = models::NewAccount {
     address: request.address.clone(),
@@ -75,7 +78,10 @@ pub async fn create_account(
 
   repository.set_account(new_account).await.map_err(map_internal_error)?;
 
-  let res = repository.get_account(&request.address).await.map_err(map_internal_error)?;
+  let res = repository
+    .get_account(&request.address)
+    .await
+    .map_err(map_internal_error)?;
 
   Ok(res.into())
 }
@@ -227,6 +233,53 @@ mod tests {
     let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::Internal)));
+  }
+
+  #[tokio::test]
+  async fn test_create_account() {
+    let mut repository = MockAccountRepository::new();
+
+    repository
+      .expect_set_account()
+      .times(1)
+      .returning(|_| Ok(()));
+
+    repository
+      .expect_get_account()
+      .times(1)
+      .returning(|_| Ok(Account::from(models::Account {
+        id: 1,
+        address: ":address:".into(),
+        available_amount: "42".into(),
+        staked_amount: "1".into(),
+        lottery_power: 0.6,
+        pending_update: false,
+      })));
+
+    let request = Json(CreateAccount {
+      address: ":address:".to_string(),
+    });
+
+    let claims = Claims::builder().roles(vec![Role::Admin]).build();
+
+    let res = create_account(request, Extension(Arc::new(repository)), claims).await;
+
+    assert!(matches!(res, Ok(_)));
+  }
+
+  #[tokio::test]
+  async fn test_create_account_forbidden() {
+    let repository = MockAccountRepository::new();
+
+    let request = Json(CreateAccount {
+      address: ":address:".to_string(),
+    });
+
+    let claims = Claims::default();
+
+    let res = create_account(request, Extension(Arc::new(repository)), claims).await;
+
+    assert!(matches!(res, Err(AppError::Forbidden)));
   }
 
   #[tokio::test]

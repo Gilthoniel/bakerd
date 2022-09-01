@@ -115,9 +115,25 @@ mod tests {
 
     let mut repository = MockAccountRepository::new();
 
+    repository.expect_get_for_update().with().times(1).returning(|| {
+      Ok(vec![Account::from(models::Account {
+        id: 1,
+        address: ":address:".into(),
+        available_amount: "0".into(),
+        staked_amount: "0".into(),
+        lottery_power: 0.0,
+        pending_update: true,
+      })])
+    });
+
     repository
       .expect_set_account()
-      .withf(|account| account.lottery_power == 0.5 && account.available_amount == "42" && account.staked_amount == "0")
+      .withf(|account| {
+        account.lottery_power == 0.5
+          && account.available_amount == "42"
+          && account.staked_amount == "0"
+          && !account.pending_update
+      })
       .times(1)
       .returning(|_| Ok(()));
 

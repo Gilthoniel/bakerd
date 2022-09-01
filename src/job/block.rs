@@ -262,6 +262,12 @@ mod tests {
 
     account_repository.expect_set_reward().times(2).returning(|_| Ok(()));
 
+    account_repository
+      .expect_set_for_update()
+      .withf(|addrs, pending| *pending && addrs.len() == 2)
+      .times(1)
+      .returning(|_, _| Ok(()));
+
     let job = BlockFetcher::new(
       Arc::new(client),
       Arc::new(block_repository),

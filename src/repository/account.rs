@@ -103,7 +103,7 @@ pub trait AccountRepository {
   async fn get_account(&self, addr: &str) -> Result<Account>;
 
   /// It returns the list of accounts associated with the addresses.
-  async fn get_all<'a>(&self, addrs: Vec<String>) -> Result<Vec<Account>>;
+  async fn get_all(&self, addrs: Vec<String>) -> Result<Vec<Account>>;
 
   /// It creates or updates an existing account using the address as the
   /// identifier.
@@ -162,7 +162,7 @@ impl AccountRepository for SqliteAccountRepository {
   }
 
   /// It returns the list of accounts associated with the addresses.
-  async fn get_all<'a>(&self, addrs: Vec<String>) -> Result<Vec<Account>> {
+  async fn get_all(&self, addrs: Vec<String>) -> Result<Vec<Account>> {
     let records: Vec<models::Account> = self
       .pool
       .exec(|mut conn| accounts.filter(address.eq_any(addrs)).load(&mut conn))

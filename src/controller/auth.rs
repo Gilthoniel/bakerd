@@ -374,7 +374,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_create_user_no_role() {
+  async fn test_create_user_forbidden() {
     let repository = MockUserRepository::new();
 
     let creds = Credentials {
