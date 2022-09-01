@@ -45,6 +45,18 @@ pub mod models {
     pub pending_update: bool,
   }
 
+  impl NewAccount {
+    pub fn new(addr: &str, pending_update: bool) -> Self {
+      Self {
+        address: addr.into(),
+        available_amount: String::from("0"),
+        staked_amount: String::from("0"),
+        lottery_power: 0.0,
+        pending_update,
+      }
+    }
+  }
+
   #[derive(Queryable, Identifiable, Associations)]
   #[diesel(table_name = account_rewards, belongs_to(AccountID, foreign_key = account_id))]
   pub struct Reward {
@@ -263,7 +275,7 @@ mod integration_tests {
       available_amount: expect.available_amount.clone(),
       staked_amount: expect.staked_amount.clone(),
       lottery_power: expect.lottery_power,
-      pending_update: false,
+      pending_update: expect.pending_update,
     };
 
     let repository = SqliteAccountRepository::new(pool);
@@ -286,23 +298,11 @@ mod integration_tests {
     let repository = SqliteAccountRepository::new(pool);
 
     repository
-      .set_account(models::NewAccount {
-        address: ":address-1:".into(),
-        available_amount: "0".into(),
-        staked_amount: "1".into(),
-        lottery_power: 0.2,
-        pending_update: false,
-      })
+      .set_account(models::NewAccount::new(":address-1:", false))
       .await?;
 
     repository
-      .set_account(models::NewAccount {
-        address: ":address-2:".into(),
-        available_amount: "42".into(),
-        staked_amount: "2".into(),
-        lottery_power: 0.2,
-        pending_update: false,
-      })
+      .set_account(models::NewAccount::new(":address-2:", true))
       .await?;
 
     let addresses = vec![":address-1:".to_string(), ":address-2:".to_string()];
@@ -323,13 +323,7 @@ mod integration_tests {
     let repository = SqliteAccountRepository::new(pool);
 
     repository
-      .set_account(models::NewAccount {
-        address: ":address:".to_string(),
-        available_amount: "0".to_string(),
-        staked_amount: "0".to_string(),
-        lottery_power: 0.0,
-        pending_update: false,
-      })
+      .set_account(models::NewAccount::new(":address:", false))
       .await
       .unwrap();
 
@@ -360,5 +354,34 @@ mod integration_tests {
     let res = repository.get_rewards(&account).await;
 
     assert!(matches!(res, Ok(rewards) if rewards.len() == 2));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_set_pending() -> Result<()> {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    pool.run_migrations().await.unwrap();
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    repository
+      .set_account(models::NewAccount::new(":address-1:", true))
+      .await?;
+
+    repository
+      .set_account(models::NewAccount::new(":address-2:", false))
+      .await?;
+
+      repository
+      .set_account(models::NewAccount::new(":address-3:", false))
+      .await?;
+
+    repository.set_for_update(vec![":address-1:".into(), ":address-2:".into()], true).await?;
+
+    let res = repository.get_for_update().await?;
+
+    assert_eq!(2, res.len());
+
+    Ok(())
   }
 }

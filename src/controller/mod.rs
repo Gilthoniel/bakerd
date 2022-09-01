@@ -68,13 +68,7 @@ pub async fn create_account(
     return Err(AppError::Forbidden);
   }
 
-  let new_account = models::NewAccount {
-    address: request.address.clone(),
-    available_amount: "0".into(),
-    staked_amount: "0".into(),
-    lottery_power: 0.0,
-    pending_update: true,
-  };
+  let new_account = models::NewAccount::new(&request.address, true);
 
   repository.set_account(new_account).await.map_err(map_internal_error)?;
 
@@ -239,22 +233,18 @@ mod tests {
   async fn test_create_account() {
     let mut repository = MockAccountRepository::new();
 
-    repository
-      .expect_set_account()
-      .times(1)
-      .returning(|_| Ok(()));
+    repository.expect_set_account().times(1).returning(|_| Ok(()));
 
-    repository
-      .expect_get_account()
-      .times(1)
-      .returning(|_| Ok(Account::from(models::Account {
+    repository.expect_get_account().times(1).returning(|_| {
+      Ok(Account::from(models::Account {
         id: 1,
         address: ":address:".into(),
         available_amount: "42".into(),
         staked_amount: "1".into(),
         lottery_power: 0.6,
         pending_update: false,
-      })));
+      }))
+    });
 
     let request = Json(CreateAccount {
       address: ":address:".to_string(),
