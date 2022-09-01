@@ -53,6 +53,33 @@ pub async fn get_status(Extension(repository): Extension<DynStatusRepository>, _
   Ok(status.into())
 }
 
+#[derive(Deserialize, Debug)]
+pub struct CreateAccount {
+  address: String,
+}
+
+pub async fn create_account(
+  request: Json<CreateAccount>,
+  repository: Extension<DynAccountRepository>,
+  claims: Claims,
+) -> Result<Json<Account>> {
+  // TODO: check claims
+
+  let new_account = models::NewAccount {
+    address: request.address.clone(),
+    available_amount: "0".into(),
+    staked_amount: "0".into(),
+    lottery_power: 0.0,
+    pending_update: true,
+  };
+
+  repository.set_account(new_account).await.map_err(map_internal_error)?;
+
+  let res = repository.get_account(&request.address).await.map_err(map_internal_error)?;
+
+  Ok(res.into())
+}
+
 /// A controller to return the account associated with the address.
 pub async fn get_account(
   Path(addr): Path<String>,
@@ -212,6 +239,7 @@ mod tests {
       available_amount: "125".into(),
       staked_amount: "50".into(),
       lottery_power: 0.06,
+      pending_update: false,
     });
 
     let expect = account.clone();
@@ -292,6 +320,7 @@ mod tests {
           available_amount: "125".into(),
           staked_amount: "50".into(),
           lottery_power: 0.06,
+          pending_update: false,
         }))
       });
 

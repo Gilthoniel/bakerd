@@ -1,12 +1,10 @@
 listen_address: 127.0.0.1:8080
 client:
-  uri: 127.0.0.1:8080
+  uri: http://127.0.0.1:10000
   token: rpcadmin
 pairs:
   - ["BTC", "USD"]
   - ["CCD", "USD"]
-accounts:
-  - "3wiw27u3JYBbEG7UEjggEu1jQmQymGQH9TknkUAXuYhhGeba7p"
 jobs:
   accounts_refresher: "*/30 * * * * *"
   price_refresher: "*/30 * * * * *"

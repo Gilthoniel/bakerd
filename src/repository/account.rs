@@ -26,6 +26,7 @@ pub mod models {
     pub available_amount: String,
     pub staked_amount: String,
     pub lottery_power: f64,
+    pub pending_update: bool,
   }
 
   #[derive(Identifiable)]
@@ -41,6 +42,7 @@ pub mod models {
     pub available_amount: String,
     pub staked_amount: String,
     pub lottery_power: f64,
+    pub pending_update: bool,
   }
 
   #[derive(Queryable, Identifiable, Associations)]
@@ -101,7 +103,7 @@ pub trait AccountRepository {
   async fn get_account(&self, addr: &str) -> Result<Account>;
 
   /// It returns the list of accounts associated with the addresses.
-  async fn get_all<'a>(&self, addrs: Vec<&'a String>) -> Result<Vec<Account>>;
+  async fn get_all<'a>(&self, addrs: Vec<String>) -> Result<Vec<Account>>;
 
   /// It creates or updates an existing account using the address as the
   /// identifier.
@@ -114,6 +116,14 @@ pub trait AccountRepository {
   /// It creates an account reward if it does not exist already. The reward is
   /// identified by the account, the block and its kind.
   async fn set_reward(&self, reward: models::NewReward) -> Result<()>;
+
+  /// It switches the given accounts to a state such that their balance and lottery power will be
+  /// updated.
+  async fn set_for_update(&self, addrs: Vec<String>, pending: bool) -> Result<()>;
+
+  /// It returns the list of accounts (max: 10) that requires an update of their balances and
+  /// lottery power.
+  async fn get_for_update(&self) -> Result<Vec<Account>>;
 }
 
 /// An alias of a singleton of an account repository shared in the application.
@@ -152,9 +162,7 @@ impl AccountRepository for SqliteAccountRepository {
   }
 
   /// It returns the list of accounts associated with the addresses.
-  async fn get_all<'a>(&self, addrs: Vec<&'a String>) -> Result<Vec<Account>> {
-    let addrs: Vec<String> = addrs.into_iter().map(String::from).collect();
-
+  async fn get_all<'a>(&self, addrs: Vec<String>) -> Result<Vec<Account>> {
     let records: Vec<models::Account> = self
       .pool
       .exec(|mut conn| accounts.filter(address.eq_any(addrs)).load(&mut conn))
@@ -206,6 +214,28 @@ impl AccountRepository for SqliteAccountRepository {
 
     Ok(())
   }
+
+  async fn set_for_update(&self, addrs: Vec<String>, pending: bool) -> Result<()> {
+    self
+      .pool
+      .exec(move |mut conn| {
+        diesel::update(accounts.filter(address.eq_any(addrs)))
+          .set(pending_update.eq(pending))
+          .execute(&mut conn)
+      })
+      .await?;
+
+    Ok(())
+  }
+
+  async fn get_for_update(&self) -> Result<Vec<Account>> {
+    let res: Vec<models::Account> = self
+      .pool
+      .exec(|mut conn| accounts.filter(pending_update.eq(true)).load(&mut conn))
+      .await?;
+
+    Ok(res.into_iter().map(Account::from).collect())
+  }
 }
 
 #[cfg(test)]
@@ -225,6 +255,7 @@ mod integration_tests {
       available_amount: "250".into(),
       staked_amount: "50".into(),
       lottery_power: 0.096,
+      pending_update: false,
     };
 
     let account = models::NewAccount {
@@ -232,6 +263,7 @@ mod integration_tests {
       available_amount: expect.available_amount.clone(),
       staked_amount: expect.staked_amount.clone(),
       lottery_power: expect.lottery_power,
+      pending_update: false,
     };
 
     let repository = SqliteAccountRepository::new(pool);
@@ -259,6 +291,7 @@ mod integration_tests {
         available_amount: "0".into(),
         staked_amount: "1".into(),
         lottery_power: 0.2,
+        pending_update: false,
       })
       .await?;
 
@@ -268,12 +301,13 @@ mod integration_tests {
         available_amount: "42".into(),
         staked_amount: "2".into(),
         lottery_power: 0.2,
+        pending_update: false,
       })
       .await?;
 
     let addresses = vec![":address-1:".to_string(), ":address-2:".to_string()];
 
-    let res = repository.get_all(addresses.iter().collect()).await?;
+    let res = repository.get_all(addresses).await?;
 
     assert_eq!(res.len(), 2);
 
@@ -294,6 +328,7 @@ mod integration_tests {
         available_amount: "0".to_string(),
         staked_amount: "0".to_string(),
         lottery_power: 0.0,
+        pending_update: false,
       })
       .await
       .unwrap();

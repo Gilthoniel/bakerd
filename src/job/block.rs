@@ -74,10 +74,15 @@ impl BlockFetcher {
       }
     }
 
-    let accounts = self.account_repository.get_all(rewards.keys().collect()).await?;
+    let accounts = self
+      .account_repository
+      .get_all(rewards.keys().cloned().collect())
+      .await?;
 
     for account in accounts {
       if let Some((baker, fees)) = rewards.get(account.get_address()) {
+        info!("rewards found for account `{}`", account.get_address());
+
         // 1. Insert the baker reward.
         let baker_reward = models::NewReward {
           account_id: account.get_id(),
@@ -101,6 +106,11 @@ impl BlockFetcher {
         self.account_repository.set_reward(tx_fee).await?;
       }
     }
+
+    self
+      .account_repository
+      .set_for_update(rewards.keys().cloned().collect(), true)
+      .await?;
 
     Ok(())
   }
@@ -237,6 +247,7 @@ mod tests {
             available_amount: "0".to_string(),
             staked_amount: "0".to_string(),
             lottery_power: 0.0,
+            pending_update: false,
           }),
           Account::from(models::Account {
             id: 2,
@@ -244,6 +255,7 @@ mod tests {
             available_amount: "0".to_string(),
             staked_amount: "0".to_string(),
             lottery_power: 0.0,
+            pending_update: false,
           }),
         ])
       });

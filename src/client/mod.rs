@@ -17,7 +17,10 @@ impl fmt::Display for Error {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::Http(e) => write!(f, "http client error: {}", e),
-      Self::Grpc(e) => write!(f, "grpc client error: {}", e),
+      Self::Grpc(e) => match std::error::Error::source(e) {
+        None => write!(f, "grpc client error: {}", e),
+        Some(e) => write!(f, "grpc: {:?}", e),
+      },
       Self::Json(e) => write!(f, "client error: encoding: {}", e),
     }
   }

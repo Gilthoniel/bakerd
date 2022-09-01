@@ -16,6 +16,7 @@ table! {
         available_amount -> Text,
         staked_amount -> Text,
         lottery_power -> Double,
+        pending_update -> Bool,
     }
 }
 

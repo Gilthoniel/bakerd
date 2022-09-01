@@ -1,12 +1,13 @@
 use super::{AsyncJob, Status};
+use crate::client::node::Block;
 use crate::client::DynNodeClient;
+use crate::model::Account;
 use crate::repository::{models, DynAccountRepository};
 use rust_decimal::Decimal;
 
 pub struct RefreshAccountsJob {
   client: DynNodeClient,
   repository: DynAccountRepository,
-  addresses: Vec<String>,
 }
 
 impl RefreshAccountsJob {
@@ -14,35 +15,30 @@ impl RefreshAccountsJob {
     Self {
       client,
       repository,
-      addresses: vec![],
     }
   }
 
-  pub fn follow_account(&mut self, address: &str) {
-    self.addresses.push(address.to_string());
-  }
-
-  async fn do_account(&self, address: &str) -> Status {
-    // 1. Get the latest block hash of the consensus to get the most up to
-    //    date information.
-    let last_block = self.client.get_last_block().await?;
-
-    // 2. Get the balance of the account.
-    let info = self.client.get_account_info(&last_block.hash, address).await?;
+  async fn do_account(&self, last_block: &Block, account: &Account) -> Status {
+    // Get the balance of the account.
+    let info = self
+      .client
+      .get_account_info(&last_block.hash, account.get_address())
+      .await?;
 
     // The response contains the total amount of CCD for the account but we
     // store only the available (and the staked) amount.
     let staked = info.account_baker.map(|b| b.staked_amount).unwrap_or(Decimal::ZERO);
 
-    // 3. Get the lottery power of the account.
-    let baker = self.client.get_baker(&last_block.hash, address).await?;
+    // Get the lottery power of the account.
+    let baker = self.client.get_baker(&last_block.hash, account.get_address()).await?;
 
-    // 4. Finally the account is updated in the repository.
+    // Finally the account is updated in the repository.
     let mut new_account = models::NewAccount {
-      address: address.into(),
+      address: account.get_address().into(),
       available_amount: (info.account_amount - staked).to_string(),
       staked_amount: staked.to_string(),
       lottery_power: 0.0,
+      pending_update: false,
     };
 
     if let Some(baker) = baker {
@@ -58,10 +54,13 @@ impl RefreshAccountsJob {
 #[async_trait]
 impl AsyncJob for RefreshAccountsJob {
   async fn execute(&self) -> Status {
-    // TODO: find account for update.
+    let accounts = self.repository.get_for_update().await?;
 
-    for address in &self.addresses {
-      self.do_account(address).await?;
+    // Get the latest block hash of the consensus to get the most up to date information.
+    let last_block = self.client.get_last_block().await?;
+
+    for account in accounts {
+      self.do_account(&last_block, &account).await?;
     }
 
     Ok(())
@@ -122,8 +121,7 @@ mod tests {
       .times(1)
       .returning(|_| Ok(()));
 
-    let mut job = RefreshAccountsJob::new(Arc::new(client), Arc::new(repository));
-    job.follow_account(":address:");
+    let job = RefreshAccountsJob::new(Arc::new(client), Arc::new(repository));
 
     let res = job.execute().await;
 

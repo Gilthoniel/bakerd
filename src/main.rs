@@ -130,15 +130,10 @@ async fn prepare_jobs(deps: &Dependencies) -> Jobber {
       name.as_str(),
       schedule,
       match name {
-        config::Job::AccountsRefresher => {
-          let mut job = job::account::RefreshAccountsJob::new(node_client.clone(), deps.account.clone());
-
-          for address in deps.cfg.get_accounts().unwrap_or(&vec![]) {
-            job.follow_account(address);
-          }
-
-          Box::new(job)
-        }
+        config::Job::AccountsRefresher => Box::new(job::account::RefreshAccountsJob::new(
+          node_client.clone(),
+          deps.account.clone(),
+        )),
         config::Job::PriceRefresher => {
           let mut job = job::price::PriceRefresher::new(price_client.clone(), deps.price.clone());
 
@@ -177,6 +172,7 @@ async fn create_app(deps: &Dependencies) -> Result<Router> {
       .route("/auth/authorize", post(controller::auth::authorize))
       .route("/auth/token", post(controller::auth::refresh_token))
       .route("/users", post(controller::auth::create_user))
+      .route("/accounts", post(controller::create_account))
       .route("/accounts/:addr", get(controller::get_account))
       .route("/accounts/:addr/rewards", get(controller::get_account_rewards))
       .route("/prices/:pair", get(controller::get_price))

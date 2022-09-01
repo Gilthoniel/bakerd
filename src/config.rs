@@ -50,7 +50,7 @@ impl ClientCfg {
 impl Default for ClientCfg {
   fn default() -> Self {
     Self {
-      uri: Uri::from_static("127.0.0.1:10000"),
+      uri: Uri::from_static("http://127.0.0.1:10000"),
       token: AsciiMetadataValue::from_static("rpcadmin"),
     }
   }
@@ -62,7 +62,6 @@ pub struct Config {
   client: Option<ClientCfg>,
   jobs: Option<HashMap<Job, String>>,
   pairs: Option<Vec<Pair>>,
-  accounts: Option<Vec<String>>,
 }
 
 impl Config {
@@ -98,10 +97,6 @@ impl Config {
     self.pairs.as_ref()
   }
 
-  pub fn get_accounts(&self) -> Option<&Vec<String>> {
-    self.accounts.as_ref()
-  }
-
   pub fn make_client(&self) -> DynNodeClient {
     match &self.client {
       None => ClientCfg::default().as_client(),
@@ -133,7 +128,6 @@ impl Default for Config {
       client: Some(ClientCfg::default()),
       jobs: None,
       pairs: None,
-      accounts: None,
     }
   }
 }
