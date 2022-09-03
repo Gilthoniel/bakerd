@@ -1,0 +1,33 @@
+name: build-and-test
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    # requires SQLite >= 3.35
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup
+      run: make setup-tools
+
+    - name: Build
+      run: cargo build
+
+    - name: Run tests
+      run: make test-ci
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v2
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./target/report/lcov.info

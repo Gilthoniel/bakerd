@@ -1,8 +1,36 @@
 setup-tools:
-	cargo install cargo-tarpaulin
+	rustup component add llvm-tools-preview
+	cargo install grcov
 
 test:
-	cargo tarpaulin --ignore-tests --out Html
+	@RUSTFLAGS="-C instrument-coverage" LLVM_PROFILE_FILE="target/report/coverage-report.profraw" cargo test
+
+	@grcov . \
+		-s . \
+		--ignore build.rs \
+		--binary-path ./target/debug/ \
+		-t html \
+		--branch \
+		--ignore-not-existing \
+		--excl-br-start "mod tests \{" \
+		--excl-start "mod tests \{" \
+		-o ./target/report \
+		./target/report/coverage-report.profraw
+
+test-ci:
+	@RUSTFLAGS="-C instrument-coverage" LLVM_PROFILE_FILE="target/report/coverage-report.profraw" cargo test
+
+	@grcov . \
+		-s . \
+		--ignore build.rs \
+		--binary-path ./target/debug/ \
+		-t lcov \
+		--branch \
+		--ignore-not-existing \
+		--excl-br-start "mod tests \{" \
+		--excl-start "mod tests \{" \
+		-o ./target/report/lcov.info \
+		./target/report/coverage-report.profraw
 
 migration-redo:
 	diesel migration redo --database-url data.db
