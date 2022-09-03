@@ -27,7 +27,7 @@ impl RefreshAccountsJob {
 
     // The response contains the total amount of CCD for the account but we
     // store only the available (and the staked) amount.
-    let staked = info.account_baker.map(|b| b.staked_amount).unwrap_or(Decimal::ZERO);
+    let stake = info.account_baker.map(|b| b.staked_amount).unwrap_or(Decimal::ZERO);
 
     // Get the lottery power of the account.
     let baker = self.client.get_baker(&last_block.hash, account.get_address()).await?;
@@ -35,8 +35,8 @@ impl RefreshAccountsJob {
     // Finally the account is updated in the repository.
     let mut new_account = models::NewAccount {
       address: account.get_address().into(),
-      available_amount: (info.account_amount - staked).to_string(),
-      staked_amount: staked.to_string(),
+      balance: (info.account_amount - stake).into(),
+      stake: stake.into(),
       lottery_power: 0.0,
       pending_update: false,
     };
@@ -71,9 +71,10 @@ impl AsyncJob for RefreshAccountsJob {
 mod tests {
   use super::*;
   use crate::client::node::{AccountInfo, Baker, Block, MockNodeClient};
+  use crate::repository::models::dec;
   use crate::repository::MockAccountRepository;
   use mockall::predicate::*;
-  use rust_decimal_macros::dec;
+  use rust_decimal::Decimal;
   use std::sync::Arc;
 
   #[tokio::test]
@@ -94,7 +95,7 @@ mod tests {
       .returning(|_, _| {
         Ok(AccountInfo {
           account_nonce: 0,
-          account_amount: dec!(42),
+          account_amount: Decimal::from(42),
           account_index: 123,
           account_address: ":address:".into(),
           account_baker: None,
@@ -119,8 +120,8 @@ mod tests {
       Ok(vec![Account::from(models::Account {
         id: 1,
         address: ":address:".into(),
-        available_amount: "0".into(),
-        staked_amount: "0".into(),
+        balance: dec!(0),
+        stake: dec!(0),
         lottery_power: 0.0,
         pending_update: true,
       })])
@@ -130,8 +131,8 @@ mod tests {
       .expect_set_account()
       .withf(|account| {
         account.lottery_power == 0.5
-          && account.available_amount == "42"
-          && account.staked_amount == "0"
+          && account.balance.0 == Decimal::from(42)
+          && account.stake.0 == Decimal::from(0)
           && !account.pending_update
       })
       .times(1)

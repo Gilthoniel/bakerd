@@ -171,6 +171,7 @@ fn map_account_error(e: RepositoryError) -> AppError {
 mod tests {
   use super::*;
   use crate::model::{Pair, Status as StatusView};
+  use crate::repository::models::dec;
   use crate::repository::{models, MockAccountRepository, MockPriceRepository, MockStatusRepository};
   use axum::http::StatusCode;
   use diesel::result::Error;
@@ -239,8 +240,8 @@ mod tests {
       Ok(Account::from(models::Account {
         id: 1,
         address: ":address:".into(),
-        available_amount: "42".into(),
-        staked_amount: "1".into(),
+        balance: dec!(42),
+        stake: dec!(1),
         lottery_power: 0.6,
         pending_update: false,
       }))
@@ -279,8 +280,8 @@ mod tests {
     let account = Account::from(models::Account {
       id: 1,
       address: ":address:".into(),
-      available_amount: "125".into(),
-      staked_amount: "50".into(),
+      balance: dec!(125),
+      stake: dec!(25),
       lottery_power: 0.06,
       pending_update: false,
     });
@@ -360,8 +361,8 @@ mod tests {
         Ok(Account::from(models::Account {
           id: 1,
           address: ":address:".into(),
-          available_amount: "125".into(),
-          staked_amount: "50".into(),
+          balance: dec!(125),
+          stake: dec!(50),
           lottery_power: 0.06,
           pending_update: false,
         }))
@@ -376,7 +377,7 @@ mod tests {
           id: 1,
           account_id: 1,
           block_hash: ":hash:".to_string(),
-          amount: "25.76".to_string(),
+          amount: dec!(2576),
           epoch_ms: 0,
           kind: models::RewardKind::TransactionFee,
         })])

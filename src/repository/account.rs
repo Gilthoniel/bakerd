@@ -10,22 +10,58 @@ pub mod models {
   use crate::schema::account_rewards;
   use crate::schema::accounts;
   use diesel::backend;
-  use diesel::deserialize;
-  use diesel::serialize;
+  use diesel::deserialize as de;
+  use diesel::serialize as se;
   use diesel::sql_types::Text;
   use diesel::sqlite::Sqlite;
+  use rust_decimal::Decimal;
+  use std::str::FromStr;
 
   const REWARD_KIND_BAKER: &str = "kind_baker";
   const REWARD_KIND_TRANSACTION_FEE: &str = "kind_transaction_fee";
+
+  #[derive(AsExpression, FromSqlRow, Debug)]
+  #[diesel(sql_type = Text)]
+  pub struct Dec(pub Decimal);
+
+  impl From<Decimal> for Dec {
+    fn from(v: Decimal) -> Self {
+      Self(v)
+    }
+  }
+
+  impl se::ToSql<Text, Sqlite> for Dec {
+    fn to_sql(&self, out: &mut se::Output<Sqlite>) -> se::Result {
+      let e = self.0.to_string();
+      out.set_value(e);
+      Ok(se::IsNull::No)
+    }
+  }
+
+  impl de::FromSql<Text, Sqlite> for Dec {
+    fn from_sql(value: backend::RawValue<Sqlite>) -> de::Result<Self> {
+      let s = <String as de::FromSql<Text, Sqlite>>::from_sql(value)?;
+      let res = Decimal::from_str(&s)?;
+      Ok(Dec(res))
+    }
+  }
+
+  macro_rules! dec {
+    ($v:expr) => {
+      crate::repository::models::Dec(rust_decimal_macros::dec!($v))
+    };
+  }
+
+  pub(crate) use dec;
 
   /// Record of an account state on the blockchain.
   #[derive(Queryable)]
   pub struct Account {
     pub id: i32,
     pub address: String,
-    pub available_amount: String,
-    pub staked_amount: String,
     pub lottery_power: f64,
+    pub balance: Dec,
+    pub stake: Dec,
     pub pending_update: bool,
   }
 
@@ -39,8 +75,8 @@ pub mod models {
   #[diesel(table_name = accounts)]
   pub struct NewAccount {
     pub address: String,
-    pub available_amount: String,
-    pub staked_amount: String,
+    pub balance: Dec,
+    pub stake: Dec,
     pub lottery_power: f64,
     pub pending_update: bool,
   }
@@ -49,8 +85,8 @@ pub mod models {
     pub fn new(addr: &str, pending_update: bool) -> Self {
       Self {
         address: addr.into(),
-        available_amount: String::from("0"),
-        staked_amount: String::from("0"),
+        balance: dec!(0),
+        stake: dec!(0),
         lottery_power: 0.0,
         pending_update,
       }
@@ -63,9 +99,9 @@ pub mod models {
     pub id: i32,
     pub account_id: i32,
     pub block_hash: String,
-    pub amount: String,
     pub epoch_ms: i64,
     pub kind: RewardKind,
+    pub amount: Dec,
   }
 
   // A enumeration of the possible reward kinds.
@@ -76,20 +112,20 @@ pub mod models {
     TransactionFee,
   }
 
-  impl serialize::ToSql<Text, Sqlite> for RewardKind {
-    fn to_sql(&self, out: &mut serialize::Output<Sqlite>) -> serialize::Result {
+  impl se::ToSql<Text, Sqlite> for RewardKind {
+    fn to_sql(&self, out: &mut se::Output<Sqlite>) -> se::Result {
       let e = match self {
         Self::Baker => REWARD_KIND_BAKER,
         Self::TransactionFee => REWARD_KIND_TRANSACTION_FEE,
       };
 
-      <str as serialize::ToSql<Text, Sqlite>>::to_sql(e, out)
+      <str as se::ToSql<Text, Sqlite>>::to_sql(e, out)
     }
   }
 
-  impl deserialize::FromSql<Text, Sqlite> for RewardKind {
-    fn from_sql(value: backend::RawValue<Sqlite>) -> deserialize::Result<Self> {
-      match <String as deserialize::FromSql<Text, Sqlite>>::from_sql(value)?.as_str() {
+  impl de::FromSql<Text, Sqlite> for RewardKind {
+    fn from_sql(value: backend::RawValue<Sqlite>) -> de::Result<Self> {
+      match <String as de::FromSql<Text, Sqlite>>::from_sql(value)?.as_str() {
         REWARD_KIND_BAKER => Ok(RewardKind::Baker),
         REWARD_KIND_TRANSACTION_FEE => Ok(RewardKind::TransactionFee),
         x => Err(format!("unrecognized value for enum: {}", x).into()),
@@ -102,7 +138,7 @@ pub mod models {
   pub struct NewReward {
     pub account_id: i32,
     pub block_hash: String,
-    pub amount: String,
+    pub amount: Dec,
     pub epoch_ms: i64,
     pub kind: RewardKind,
   }
@@ -258,6 +294,7 @@ impl AccountRepository for SqliteAccountRepository {
 mod integration_tests {
   use super::*;
   use crate::repository::AsyncPool;
+  use models::dec;
 
   #[tokio::test(flavor = "multi_thread")]
   async fn test_get_account() {
@@ -268,16 +305,16 @@ mod integration_tests {
     let expect = models::Account {
       id: 1,
       address: ":address:".into(),
-      available_amount: "250".into(),
-      staked_amount: "50".into(),
+      balance: dec!(250.2),
+      stake: dec!(50),
       lottery_power: 0.096,
       pending_update: false,
     };
 
     let account = models::NewAccount {
       address: expect.address.clone(),
-      available_amount: expect.available_amount.clone(),
-      staked_amount: expect.staked_amount.clone(),
+      balance: dec!(250.2),
+      stake: dec!(50),
       lottery_power: expect.lottery_power,
       pending_update: expect.pending_update,
     };
@@ -312,8 +349,8 @@ mod integration_tests {
 
     let account = models::NewAccount {
       address: ":address:".into(),
-      available_amount: "250".into(),
-      staked_amount: "50".into(),
+      balance: dec!(250),
+      stake: dec!(50),
       lottery_power: 0.096,
       pending_update: false,
     };
@@ -380,7 +417,7 @@ mod integration_tests {
       .set_reward(models::NewReward {
         account_id: account.get_id(),
         block_hash: ":hash:".to_string(),
-        amount: "0.125".to_string(),
+        amount: dec!(125),
         epoch_ms: 0,
         kind: models::RewardKind::Baker,
       })
@@ -391,7 +428,7 @@ mod integration_tests {
       .set_reward(models::NewReward {
         account_id: account.get_id(),
         block_hash: ":hash:".to_string(),
-        amount: "0.525".to_string(),
+        amount: dec!(525),
         epoch_ms: 0,
         kind: models::RewardKind::TransactionFee,
       })
@@ -412,8 +449,8 @@ mod integration_tests {
     let account = Account::from(models::Account {
       id: 1,
       address: "address".into(),
-      available_amount: "0".into(),
-      staked_amount: "0".into(),
+      balance: dec!(0),
+      stake: dec!(0),
       lottery_power: 0.0,
       pending_update: false,
     });
@@ -435,7 +472,7 @@ mod integration_tests {
       .set_reward(models::NewReward {
         account_id: 1,
         block_hash: ":hash:".to_string(),
-        amount: "0.525".to_string(),
+        amount: dec!(525),
         epoch_ms: 0,
         kind: models::RewardKind::TransactionFee,
       })

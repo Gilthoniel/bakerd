@@ -69,7 +69,10 @@ impl BlockFetcher {
       if let Some(addr) = &event.account {
         rewards.insert(
           addr.clone(),
-          (to_amount(event.baker_reward), to_amount(event.transaction_fees)),
+          (
+            event.baker_reward.unwrap_or(Decimal::ZERO),
+            event.transaction_fees.unwrap_or(Decimal::ZERO),
+          ),
         );
       }
     }
@@ -87,7 +90,7 @@ impl BlockFetcher {
         let baker_reward = models::NewReward {
           account_id: account.get_id(),
           block_hash: block_info.block_hash.clone(),
-          amount: baker.clone(),
+          amount: (*baker).into(),
           epoch_ms: block_info.block_slot_time.timestamp_millis(),
           kind: models::RewardKind::Baker,
         };
@@ -98,7 +101,7 @@ impl BlockFetcher {
         let tx_fee = models::NewReward {
           account_id: account.get_id(),
           block_hash: block_info.block_hash.clone(),
-          amount: fees.clone(),
+          amount: (*fees).into(),
           epoch_ms: block_info.block_slot_time.timestamp_millis(),
           kind: models::RewardKind::TransactionFee,
         };
@@ -146,21 +149,16 @@ impl AsyncJob for BlockFetcher {
   }
 }
 
-/// It takes an optional amount as decimal and converts it to a string. If the
-/// optional value is empty, zero is returned.
-fn to_amount(value: Option<Decimal>) -> String {
-  value.unwrap_or(Decimal::ZERO).to_string()
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::client::node::{BlockInfo, BlockSummary, Event, MockNodeClient};
   use crate::model::{Account, Block};
+  use crate::repository::models::dec;
   use crate::repository::{MockAccountRepository, MockBlockRepository};
   use chrono::Utc;
   use mockall::predicate::*;
-  use rust_decimal_macros::dec;
+  use rust_decimal::Decimal;
   use std::sync::Arc;
 
   #[tokio::test]
@@ -198,15 +196,15 @@ mod tests {
           Event {
             tag: EVENT_TAG_REWARD.to_string(),
             account: Some(":address-1:".to_string()),
-            baker_reward: Some(dec!(2.5)),
-            transaction_fees: Some(dec!(0.125)),
+            baker_reward: Some(Decimal::from(25)),
+            transaction_fees: Some(Decimal::from(125)),
             finalization_reward: None,
           },
           Event {
             tag: EVENT_TAG_REWARD.to_string(),
             account: Some(":address-2:".to_string()),
-            baker_reward: Some(dec!(5)),
-            transaction_fees: Some(dec!(1.2)),
+            baker_reward: Some(Decimal::from(5)),
+            transaction_fees: Some(Decimal::from(12)),
             finalization_reward: None,
           },
         ],
@@ -244,16 +242,16 @@ mod tests {
           Account::from(models::Account {
             id: 1,
             address: ":address-1:".to_string(),
-            available_amount: "0".to_string(),
-            staked_amount: "0".to_string(),
+            balance: dec!(0),
+            stake: dec!(0),
             lottery_power: 0.0,
             pending_update: false,
           }),
           Account::from(models::Account {
             id: 2,
             address: ":address-3:".to_string(),
-            available_amount: "0".to_string(),
-            staked_amount: "0".to_string(),
+            balance: dec!(0),
+            stake: dec!(0),
             lottery_power: 0.0,
             pending_update: false,
           }),

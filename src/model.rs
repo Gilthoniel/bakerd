@@ -30,8 +30,8 @@ impl From<models::Account> for Account {
     Self {
       id: record.id,
       address: record.address,
-      available_amount: to_decimal(&record.available_amount),
-      staked_amount: to_decimal(&record.staked_amount),
+      available_amount: record.balance.0,
+      staked_amount: record.stake.0,
       lottery_power: record.lottery_power,
     }
   }
@@ -76,7 +76,7 @@ impl From<models::Reward> for Reward {
       id: record.id,
       account_id: record.account_id,
       block_hash: record.block_hash,
-      amount: to_decimal(&record.amount),
+      amount: record.amount.0,
       epoch_ms: record.epoch_ms,
       kind: RewardKind::from(record.kind),
     }
@@ -251,10 +251,4 @@ impl From<models::Session> for Session {
       last_use_ms: s.last_use_ms,
     }
   }
-}
-
-/// It takes a string of a numeric value and tries to convert it into a decimal
-/// instance, otherwise it returns zero.
-fn to_decimal(value: &str) -> Decimal {
-  Decimal::from_str_exact(value).unwrap_or(Decimal::ZERO)
 }

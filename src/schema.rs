@@ -3,9 +3,9 @@ table! {
         id -> Integer,
         account_id -> Integer,
         block_hash -> Text,
-        amount -> Text,
         epoch_ms -> BigInt,
         kind -> Text,
+        amount -> Text,
     }
 }
 
@@ -13,9 +13,9 @@ table! {
     accounts (id) {
         id -> Integer,
         address -> Text,
-        available_amount -> Text,
-        staked_amount -> Text,
         lottery_power -> Double,
+        balance -> Text,
+        stake -> Text,
         pending_update -> Bool,
     }
 }
