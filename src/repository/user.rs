@@ -187,6 +187,22 @@ mod integration_tests {
   use crate::repository::{AsyncPool, RepositoryError};
 
   #[tokio::test(flavor = "multi_thread")]
+  async fn test_create_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteUserRepository::new(pool);
+
+    let new_user = models::NewUser {
+      username: "bob".into(),
+      password: "some-hash".into(),
+    };
+
+    let res = repository.create(new_user).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
   async fn test_get_user() {
     let pool = AsyncPool::open(":memory:").unwrap();
 
@@ -217,6 +233,39 @@ mod integration_tests {
     let res = repository.get("bob").await;
 
     assert!(matches!(res, Err(RepositoryError::NotFound)));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_user_by_id() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    pool.run_migrations().await.unwrap();
+
+    let repository = SqliteUserRepository::new(pool);
+
+    let new_user = models::NewUser {
+      username: "bob".into(),
+      password: "some-hash".into(),
+    };
+
+    assert!(matches!(repository.create(new_user).await, Ok(_)));
+
+    let user = repository.get("bob").await.unwrap();
+
+    let res = repository.get_by_id(user.get_id()).await;
+
+    assert!(matches!(res, Ok(user) if user.get_username() == "bob"));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_user_by_id_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteUserRepository::new(pool);
+
+    let res = repository.get_by_id(1).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
   }
 
   #[tokio::test(flavor = "multi_thread")]
@@ -274,6 +323,23 @@ mod integration_tests {
         expiration_ms: 1200 + SESSION_DURATION_MILLIS,
         last_use_ms: 1200,
     })));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_create_session_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteUserRepository::new(pool);
+
+    let user = User::from(models::User {
+      id: 1,
+      username: "username".into(),
+      password: "password".into(),
+    });
+
+    let res = repository.create_session(&user, 1000).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
   }
 
   #[tokio::test(flavor = "multi_thread")]

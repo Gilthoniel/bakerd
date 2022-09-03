@@ -18,7 +18,7 @@ pub mod models {
     pub baker: i64,
   }
 
-  #[derive(Insertable)]
+  #[derive(Insertable, Clone)]
   #[diesel(table_name = blocks)]
   pub struct NewBlock {
     pub height: i64,
@@ -157,6 +157,17 @@ mod integration_tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
+  async fn get_last_block_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteBlockRepository::new(pool);
+
+    let res = repository.get_last_block().await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
   async fn test_get_all() {
     let pool = AsyncPool::open(":memory:").unwrap();
 
@@ -209,6 +220,46 @@ mod integration_tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
+  async fn get_all_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteBlockRepository::new(pool);
+
+    let res = repository
+      .get_all(models::BlockFilter {
+        baker: None,
+        since_ms: None,
+      })
+      .await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_store_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    pool.run_migrations().await.unwrap();
+
+    let repository = SqliteBlockRepository::new(pool);
+
+    let new_block = models::NewBlock {
+      height: 1,
+      hash: ":hash-block-1:".into(),
+      slot_time_ms: 1000,
+      baker: 42,
+    };
+
+    let res = repository.store(new_block.clone()).await;
+
+    assert!(matches!(res, Ok(_)));
+
+    let res = repository.store(new_block).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))), "{:?}", res);
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
   async fn test_garbage_collect() {
     let pool = AsyncPool::open(":memory:").unwrap();
 
@@ -222,5 +273,16 @@ mod integration_tests {
       repository.get_last_block().await,
       Err(RepositoryError::NotFound),
     ));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_garbage_collect_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteBlockRepository::new(pool);
+
+    let res = repository.garbage_collect(2840312).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
   }
 }

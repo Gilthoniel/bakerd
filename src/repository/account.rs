@@ -129,12 +129,10 @@ pub trait AccountRepository {
   /// identified by the account, the block and its kind.
   async fn set_reward(&self, reward: models::NewReward) -> Result<()>;
 
-  /// It switches the given accounts to a state such that their balance and lottery power will be
-  /// updated.
+  /// It sets the given either into pending for update, or inversely switch them off.
   async fn set_for_update(&self, addrs: Vec<String>, pending: bool) -> Result<()>;
 
-  /// It returns the list of accounts (max: 10) that requires an update of their balances and
-  /// lottery power.
+  /// It returns the list of accounts that requires an update of their balances and lottery power.
   async fn get_for_update(&self) -> Result<Vec<Account>>;
 }
 
@@ -183,6 +181,7 @@ impl AccountRepository for SqliteAccountRepository {
     Ok(records.into_iter().map(Account::from).collect())
   }
 
+  /// It creates or updates an existing account using the address as the identifier.
   async fn set_account(&self, account: models::NewAccount) -> Result<()> {
     self
       .pool
@@ -199,6 +198,7 @@ impl AccountRepository for SqliteAccountRepository {
     Ok(())
   }
 
+  /// It returns the list of rewards known for an account using the address to identity it.
   async fn get_rewards(&self, account: &Account) -> Result<Vec<Reward>> {
     let account_id = models::AccountID {
       id: account.get_id(),
@@ -212,6 +212,8 @@ impl AccountRepository for SqliteAccountRepository {
     Ok(res.into_iter().map(Reward::from).collect())
   }
 
+  /// It creates an account reward if it does not exist already. The reward is identified by the
+  /// account, the block and its kind.
   async fn set_reward(&self, reward: models::NewReward) -> Result<()> {
     self
       .pool
@@ -227,6 +229,7 @@ impl AccountRepository for SqliteAccountRepository {
     Ok(())
   }
 
+  /// It sets the given either into pending for update, or inversely switch them off.
   async fn set_for_update(&self, addrs: Vec<String>, pending: bool) -> Result<()> {
     self
       .pool
@@ -240,6 +243,7 @@ impl AccountRepository for SqliteAccountRepository {
     Ok(())
   }
 
+  /// It returns the list of accounts that requires an update of their balances and lottery power.
   async fn get_for_update(&self) -> Result<Vec<Account>> {
     let res: Vec<models::Account> = self
       .pool
@@ -290,6 +294,36 @@ mod integration_tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_account_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    let res = repository.get_account(":address:").await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_set_account_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    let account = models::NewAccount {
+      address: ":address:".into(),
+      available_amount: "250".into(),
+      staked_amount: "50".into(),
+      lottery_power: 0.096,
+      pending_update: false,
+    };
+
+    let res = repository.set_account(account).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
   async fn test_get_all() -> Result<()> {
     let pool = AsyncPool::open(":memory:")?;
 
@@ -310,6 +344,19 @@ mod integration_tests {
     let res = repository.get_all(addresses).await?;
 
     assert_eq!(res.len(), 2);
+
+    Ok(())
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_all_failure() -> Result<()> {
+    let pool = AsyncPool::open(":memory:")?;
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    let res = repository.get_all(vec![]).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
 
     Ok(())
   }
@@ -357,6 +404,47 @@ mod integration_tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_rewards_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    let account = Account::from(models::Account {
+      id: 1,
+      address: "address".into(),
+      available_amount: "0".into(),
+      staked_amount: "0".into(),
+      lottery_power: 0.0,
+      pending_update: false,
+    });
+
+    let res = repository.get_rewards(&account).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_set_reward_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    pool.run_migrations().await.unwrap();
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    let res = repository
+      .set_reward(models::NewReward {
+        account_id: 1,
+        block_hash: ":hash:".to_string(),
+        amount: "0.525".to_string(),
+        epoch_ms: 0,
+        kind: models::RewardKind::TransactionFee,
+      })
+      .await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))), "value: {:?}", res);
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
   async fn test_set_pending() -> Result<()> {
     let pool = AsyncPool::open(":memory:").unwrap();
 
@@ -372,16 +460,42 @@ mod integration_tests {
       .set_account(models::NewAccount::new(":address-2:", false))
       .await?;
 
-      repository
+    repository
       .set_account(models::NewAccount::new(":address-3:", false))
       .await?;
 
-    repository.set_for_update(vec![":address-1:".into(), ":address-2:".into()], true).await?;
+    repository
+      .set_for_update(vec![":address-1:".into(), ":address-2:".into()], true)
+      .await?;
 
     let res = repository.get_for_update().await?;
 
     assert_eq!(2, res.len());
 
     Ok(())
+  }
+
+  /// It tests that the function properly returns an error when no migration has run.
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_set_for_update_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    let res = repository.set_for_update(vec![], true).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  /// It tests that the function properly returns an error when no migration has run.
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_for_update_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqliteAccountRepository::new(pool);
+
+    let res = repository.get_for_update().await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
   }
 }

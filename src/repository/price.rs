@@ -122,6 +122,24 @@ mod integration_tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
+  async fn test_set_price_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqlitePriceRepository::new(pool);
+
+    let res = repository
+      .set_price(models::Price {
+        base: "CCD".to_string(),
+        quote: "BTC".to_string(),
+        bid: 0.00005,
+        ask: 0.00006,
+      })
+      .await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
   async fn test_get_price_not_found() {
     let pool = AsyncPool::open(":memory:").unwrap();
 
@@ -132,5 +150,16 @@ mod integration_tests {
     let res = repository.get_price(&Pair::from(("CCD", "USD"))).await;
 
     assert!(matches!(res, Err(RepositoryError::NotFound)));
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_get_price_failure() {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    let repository = SqlitePriceRepository::new(pool);
+
+    let res = repository.get_price(&Pair::from(("CCD", "USD"))).await;
+
+    assert!(matches!(res, Err(RepositoryError::Faillable(_))));
   }
 }

@@ -4,10 +4,12 @@ mod price;
 mod status;
 mod user;
 
-use diesel::r2d2::ConnectionManager;
+use diesel::connection::SimpleConnection;
+use diesel::r2d2::{ConnectionManager, Error as R2d2Error};
 use diesel::result::Error as DriverError;
 use diesel::{QueryResult, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
+use r2d2::CustomizeConnection;
 use std::fmt;
 use std::time::Duration;
 
@@ -120,6 +122,7 @@ impl AsyncPool {
     let manager = ConnectionManager::new(path);
 
     let pool = r2d2::Pool::builder()
+      .connection_customizer(Box::new(ConnectionCustomizer {}))
       .max_size(1) // sqlite does not support multiple writers.
       .connection_timeout(timeout)
       .build(manager)?;
@@ -160,9 +163,27 @@ impl AsyncPool {
   }
 }
 
+/// A connection customizer to enable some features of SQLite.
+/// - Foreign key constraint check.
+#[derive(Debug)]
+struct ConnectionCustomizer;
+
+impl<C: SimpleConnection> CustomizeConnection<C, R2d2Error> for ConnectionCustomizer {
+  /// It executes the statements after a connection is established. It then insures some features
+  /// are enabled for any connections.
+  fn on_acquire(&self, conn: &mut C) -> std::result::Result<(), R2d2Error> {
+    conn
+      .batch_execute("PRAGMA foreign_keys = true;")
+      .map_err(|e| R2d2Error::QueryError(e))
+  }
+
+  fn on_release(&self, _conn: C) {}
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+  use mockall::predicate::*;
 
   #[derive(Debug)]
   struct FakeError;
@@ -174,6 +195,13 @@ mod tests {
   }
 
   impl std::error::Error for FakeError {}
+
+  mockall::mock! {
+    Connection {}
+    impl SimpleConnection for Connection {
+      fn batch_execute(&mut self, query: &str) -> QueryResult<()>;
+    }
+  }
 
   #[test]
   fn test_repository_error() {
@@ -209,5 +237,42 @@ mod tests {
       res.map_err(RepositoryError::from),
       Err(RepositoryError::Faillable(_))
     ));
+  }
+
+  #[test]
+  fn test_connection_customizer() {
+    let mut conn = MockConnection::new();
+
+    conn
+      .expect_batch_execute()
+      .with(eq("PRAGMA foreign_keys = true;"))
+      .times(1)
+      .returning(|_| Ok(()));
+
+    let customizer = ConnectionCustomizer {};
+
+    // expect the pragma to be executed.
+    let res = customizer.on_acquire(&mut conn);
+    assert!(matches!(res, Ok(_)));
+
+    // make sure nothing more is executed.
+    customizer.on_release(conn);
+  }
+
+  #[test]
+  fn test_connection_customizer_failure() {
+    let mut conn = MockConnection::new();
+
+    conn
+      .expect_batch_execute()
+      .with(eq("PRAGMA foreign_keys = true;"))
+      .times(1)
+      .returning(|_| Err(DriverError::AlreadyInTransaction));
+
+    let customizer = ConnectionCustomizer {};
+
+    // expect the pragma to be executed.
+    let res = customizer.on_acquire(&mut conn);
+    assert!(matches!(res, Err(R2d2Error::QueryError(_))));
   }
 }
