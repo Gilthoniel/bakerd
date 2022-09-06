@@ -335,7 +335,7 @@ fn compute_avg_latency(stats: &ccd::PeerStatsResponse) -> f64 {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod tests {
   use super::*;
   use crate::client::Error;
   use mockall::predicate::*;

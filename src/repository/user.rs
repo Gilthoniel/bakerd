@@ -182,7 +182,7 @@ fn map_not_found(e: PoolError) -> RepositoryError {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod tests {
   use super::*;
   use crate::repository::{AsyncPool, RepositoryError};
 

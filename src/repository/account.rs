@@ -291,7 +291,7 @@ impl AccountRepository for SqliteAccountRepository {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod tests {
   use super::*;
   use crate::repository::AsyncPool;
   use models::dec;

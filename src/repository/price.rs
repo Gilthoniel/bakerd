@@ -80,7 +80,7 @@ impl PriceRepository for SqlitePriceRepository {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod tests {
   use super::*;
   use crate::repository::RepositoryError;
 

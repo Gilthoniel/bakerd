@@ -205,7 +205,7 @@ async fn run_server(deps: &Dependencies, termination: impl std::future::Future<O
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod tests {
   use super::*;
   use crate::authentication::Claims;
   use axum::{

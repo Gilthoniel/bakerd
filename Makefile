@@ -8,6 +8,7 @@ test:
 	@grcov . \
 		-s . \
 		--ignore build.rs \
+		--ignore "target/debug/*" \
 		--binary-path ./target/debug/ \
 		-t html \
 		--branch \
@@ -23,6 +24,7 @@ test-ci:
 	@grcov . \
 		-s . \
 		--ignore build.rs \
+		--ignore /* \
 		--binary-path ./target/debug/ \
 		-t lcov \
 		--branch \

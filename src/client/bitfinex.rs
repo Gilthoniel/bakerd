@@ -93,8 +93,10 @@ impl<E: Executor> PriceClient for BitfinexClient<E> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::client::Error;
   use mockall::mock;
   use mockall::predicate::*;
+  use std::time::Duration;
 
   mock! {
       pub Executor {
@@ -149,16 +151,9 @@ mod tests {
     assert_eq!(0.01, prices[1].bid());
     assert_eq!(0.02, prices[1].ask());
   }
-}
-
-#[cfg(test)]
-mod integration_tests {
-  use super::*;
-  use crate::client::Error;
-  use std::time::Duration;
 
   #[tokio::test]
-  async fn test_get_prices() {
+  async fn test_get_prices_with_client() {
     let client = BitfinexClient::default();
 
     let res = client.get_prices(&vec![Pair::from(("BTC", "USD"))]).await;

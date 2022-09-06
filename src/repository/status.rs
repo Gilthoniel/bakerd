@@ -152,7 +152,7 @@ impl StatusRepository for SqliteStatusRepository {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod tests {
   use super::*;
 
   #[tokio::test(flavor = "multi_thread")]

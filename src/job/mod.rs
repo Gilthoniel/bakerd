@@ -144,7 +144,7 @@ impl Jobber {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod tests {
   use super::*;
   use std::str::FromStr;
   use tokio::sync::watch;
