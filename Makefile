@@ -8,8 +8,7 @@ test:
 	@grcov . \
 		-s . \
 		--ignore build.rs \
-		--ignore "target/debug/*" \
-		--binary-path ./target/debug/ \
+		--binary-path ./target/debug/deps \
 		-t html \
 		--branch \
 		--ignore-not-existing \
@@ -24,8 +23,7 @@ test-ci:
 	@grcov . \
 		-s . \
 		--ignore build.rs \
-		--ignore "target/debug/*" \
-		--binary-path ./target/debug/ \
+		--binary-path ./target/debug/deps \
 		-t lcov \
 		--branch \
 		--ignore-not-existing \

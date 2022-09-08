@@ -252,3 +252,126 @@ impl From<models::Session> for Session {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_account_attributes() {
+    let account = Account {
+      id: 1,
+      address: ":address:".into(),
+      available_amount: Decimal::from(123),
+      lottery_power: 0.0,
+      staked_amount: Decimal::from(456),
+    };
+
+    // Serialize
+    let res = serde_json::to_string(&account);
+    assert!(matches!(res, Ok(_)));
+
+    // Debug
+    format!("{:?}", account);
+
+    // Clone + PartialEq
+    assert!(account == account.clone());
+  }
+
+  #[test]
+  fn test_reward_attributes() {
+    let reward = Reward {
+      id: 1,
+      account_id: 2,
+      amount: Decimal::from(123),
+      block_hash: ":hash:".into(),
+      epoch_ms: 1000,
+      kind: RewardKind::Baker,
+    };
+
+    // Serialize
+    let res = serde_json::to_string(&reward);
+    assert!(matches!(res, Ok(_)));
+
+    // Debug
+    format!("{:?}", reward);
+  }
+
+  #[test]
+  fn test_price_attributes() {
+    let price = Price {
+      pair: Pair::from(("CCD", "USD")),
+      bid: 0.5,
+      ask: 0.2,
+    };
+
+    // Serialize
+    let res = serde_json::to_string(&price);
+    assert!(matches!(res, Ok(_)));
+
+    // Debug
+    format!("{:?}", price.clone());
+
+    // Clone + PartialEq
+    assert!(price == price.clone());
+  }
+
+  #[test]
+  fn test_block_attributes() {
+    let block = Block {
+      id: 1,
+      baker: 42,
+      hash: ":hash:".into(),
+      height: 123,
+      slot_time_ms: 1000,
+    };
+
+    // Serialize
+    let res = serde_json::to_string(&block);
+    assert!(matches!(res, Ok(_)));
+
+    // Debug
+    format!("{:?}", block);
+
+    // Clone + PartialEq
+    assert!(block == block.clone());
+  }
+
+  #[test]
+  fn test_status_attributes() {
+    let status = Status {
+      id: 1,
+      resources: models::ResourceStatusJson {
+        avg_cpu_load: Some(0.5),
+        mem_free: Some(50),
+        mem_total: Some(100),
+        uptime_secs: Some(1000),
+      },
+      node: None,
+      timestamp_ms: 1000,
+    };
+
+    // Serialize
+    let res = serde_json::to_string(&status);
+    assert!(matches!(res, Ok(_)));
+
+    // Debug
+    format!("{:?}", res);
+  }
+
+  #[test]
+  fn test_user_attributes() {
+    let user = User {
+      id: 1,
+      password: "password".into(),
+      username: "username".into(),
+    };
+
+    // Serialize
+    let res = serde_json::to_string(&user);
+    assert!(matches!(res, Ok(_)));
+
+    // Debug
+    format!("{:?}", user);
+  }
+}
