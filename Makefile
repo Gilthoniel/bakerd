@@ -24,7 +24,7 @@ test-ci:
 	@grcov . \
 		-s . \
 		--ignore build.rs \
-		--ignore /* \
+		--ignore "target/debug/*" \
 		--binary-path ./target/debug/ \
 		-t lcov \
 		--branch \
