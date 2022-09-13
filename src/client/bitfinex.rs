@@ -1,10 +1,22 @@
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize};
 
-use super::{PriceClient, Result};
-use crate::model::{Pair, Price};
+use super::Result;
+use crate::model::Pair;
 
 const TICKERS_URL: &'static str = "https://api-pub.bitfinex.com/v2/tickers";
+
+pub struct Price {
+  pub pair: Pair,
+  pub bid: f64,
+  pub ask: f64,
+}
+
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait PriceClient {
+  async fn get_prices(&self, pairs: Vec<Pair>) -> Result<Vec<Price>>;
+}
 
 /// An abstraction of the execution of an HTTP request. It takes the URL and the
 /// query parameters.
@@ -63,11 +75,11 @@ impl<E: Executor> BitfinexClient<E> {
 
 #[async_trait]
 impl<E: Executor> PriceClient for BitfinexClient<E> {
-  async fn get_prices(&self, pairs: &Vec<Pair>) -> Result<Vec<Price>> {
+  async fn get_prices(&self, pairs: Vec<Pair>) -> Result<Vec<Price>> {
     // Build the symbols that can be understood by Bitfinex.
     let symbols = pairs
       .iter()
-      .map(|pair| format!("t{}{}", pair.base(), pair.quote()))
+      .map(|pair| format!("t{}{}", pair.get_base(), pair.get_quote()))
       .reduce(|mut acc, symbol| {
         acc.push(',');
         acc.push_str(symbol.as_str());
@@ -83,7 +95,11 @@ impl<E: Executor> PriceClient for BitfinexClient<E> {
     let prices = pairs
       .into_iter()
       .zip(res.iter())
-      .map(|(pair, ticker)| Price::new(pair.clone(), ticker.1, ticker.3))
+      .map(|(pair, ticker)| Price {
+        pair: pair,
+        bid: ticker.1,
+        ask: ticker.3,
+      })
       .collect();
 
     Ok(prices)
@@ -137,26 +153,26 @@ mod tests {
     let client = BitfinexClient::new(mock);
 
     let prices = client
-      .get_prices(&vec![Pair::from(("BTC", "USD")), Pair::from(("CCD", "USD"))])
+      .get_prices(vec![(1, "BTC", "USD").into(), (2, "CCD", "USD").into()])
       .await
       .expect("tickers request failed");
 
     assert_eq!(2, prices.len());
 
-    assert_eq!(Pair::from(("BTC", "USD")), *prices[0].pair());
-    assert_eq!(2.5, prices[0].bid());
-    assert_eq!(1.128, prices[0].ask());
+    assert_eq!(Pair::from((1, "BTC", "USD")), prices[0].pair);
+    assert_eq!(2.5, prices[0].bid);
+    assert_eq!(1.128, prices[0].ask);
 
-    assert_eq!(Pair::from(("CCD", "USD")), *prices[1].pair());
-    assert_eq!(0.01, prices[1].bid());
-    assert_eq!(0.02, prices[1].ask());
+    assert_eq!(Pair::from((2, "CCD", "USD")), prices[1].pair);
+    assert_eq!(0.01, prices[1].bid);
+    assert_eq!(0.02, prices[1].ask);
   }
 
   #[tokio::test]
   async fn test_get_prices_with_client() {
     let client = BitfinexClient::default();
 
-    let res = client.get_prices(&vec![Pair::from(("BTC", "USD"))]).await;
+    let res = client.get_prices(vec![(1, "BTC", "USD").into()]).await;
 
     assert!(matches!(res, Ok(_)));
   }
@@ -167,7 +183,7 @@ mod tests {
       client: Client::builder().connect_timeout(Duration::ZERO).build().unwrap(),
     });
 
-    let res = client.get_prices(&vec![Pair::from(("BTC", "USD"))]).await;
+    let res = client.get_prices(vec![Pair::from((1, "BTC", "USD"))]).await;
 
     assert!(matches!(res, Err(Error::Http(_))));
   }

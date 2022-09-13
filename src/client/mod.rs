@@ -1,8 +1,8 @@
 pub mod bitfinex;
 pub mod node;
 
-use crate::model::{Pair, Price};
-use node::NodeClient;
+use self::bitfinex::PriceClient;
+use self::node::NodeClient;
 use std::fmt;
 use std::sync::Arc;
 
@@ -48,9 +48,6 @@ impl From<serde_json::Error> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[async_trait]
-pub trait PriceClient {
-  async fn get_prices(&self, pairs: &Vec<Pair>) -> Result<Vec<Price>>;
-}
-
 pub type DynNodeClient = Arc<dyn NodeClient + Sync + Send>;
+
+pub type BoxedPriceClient = Box<dyn PriceClient + Sync + Send>;

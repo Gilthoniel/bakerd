@@ -31,11 +31,30 @@ table! {
 }
 
 table! {
-    prices (base, quote) {
-        base -> Text,
-        quote -> Text,
+    hist_prices (pair_id) {
+        pair_id -> Integer,
         bid -> Double,
         ask -> Double,
+        timestamp_ms -> BigInt,
+    }
+}
+
+table! {
+    pairs (id) {
+        id -> Integer,
+        base -> Text,
+        quote -> Text,
+    }
+}
+
+table! {
+    prices (pair_id) {
+        pair_id -> Integer,
+        bid -> Double,
+        ask -> Double,
+        daily_change_relative -> Double,
+        high -> Double,
+        low -> Double,
     }
 }
 
@@ -66,12 +85,16 @@ table! {
 }
 
 joinable!(account_rewards -> accounts (account_id));
+joinable!(hist_prices -> pairs (pair_id));
+joinable!(prices -> pairs (pair_id));
 joinable!(user_sessions -> users (user_id));
 
 allow_tables_to_appear_in_same_query!(
   account_rewards,
   accounts,
   blocks,
+  hist_prices,
+  pairs,
   prices,
   statuses,
   user_sessions,

@@ -1,6 +1,6 @@
 use crate::repository::models;
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// An account on the Concordium blockchain. It is uniquely identified through
 /// the address.
@@ -84,61 +84,82 @@ impl From<models::Reward> for Reward {
 }
 
 /// A unique combination of a base and a quote currency.
-#[derive(PartialEq, Clone, Deserialize, Serialize, Debug)]
-pub struct Pair(String, String);
+#[derive(Serialize, Debug)]
+pub struct Pair {
+  id: i32,
+  base: String,
+  quote: String,
+}
 
 impl Pair {
-  pub fn base(&self) -> &str {
-    &self.0
+  pub fn get_id(&self) -> i32 {
+    self.id
   }
 
-  pub fn quote(&self) -> &str {
-    &self.1
+  pub fn get_base(&self) -> &str {
+    &self.base
+  }
+
+  pub fn get_quote(&self) -> &str {
+    &self.quote
   }
 }
 
-impl From<(&str, &str)> for Pair {
-  fn from((base, quote): (&str, &str)) -> Self {
-    Self(base.to_string(), quote.to_string())
+/// A pair is equal to another when its identifier is the same.
+impl PartialEq for Pair {
+  fn eq(&self, other: &Self) -> bool {
+    self.id == other.id
+  }
+
+  fn ne(&self, other: &Self) -> bool {
+    !self.eq(other)
+  }
+}
+
+impl From<models::Pair> for Pair {
+  fn from(p: models::Pair) -> Self {
+    Self {
+      id: p.id,
+      base: p.base,
+      quote: p.quote,
+    }
+  }
+}
+
+impl From<(i32, &str, &str)> for Pair {
+  fn from(v: (i32, &str, &str)) -> Self {
+    Self {
+      id: v.0,
+      base: v.1.into(),
+      quote: v.2.into(),
+    }
   }
 }
 
 /// A price (bid and ask) of a unique pair.
-#[derive(PartialEq, Clone, Serialize, Debug)]
+#[derive(PartialEq, Serialize, Debug)]
 pub struct Price {
-  pair: Pair,
+  pair_id: i32,
   bid: f64,
   ask: f64,
-}
-
-impl Price {
-  pub fn new(pair: Pair, bid: f64, ask: f64) -> Self {
-    Self {
-      pair,
-      bid,
-      ask,
-    }
-  }
-
-  pub fn pair(&self) -> &Pair {
-    &self.pair
-  }
-
-  pub fn bid(&self) -> f64 {
-    self.bid
-  }
-
-  pub fn ask(&self) -> f64 {
-    self.ask
-  }
 }
 
 impl From<models::Price> for Price {
   fn from(record: models::Price) -> Self {
     Self {
-      pair: Pair(record.base, record.quote),
+      pair_id: record.pair_id,
       bid: record.bid,
       ask: record.ask,
+    }
+  }
+}
+
+impl From<(i32, f64, f64)> for Price {
+  fn from(v: (i32, f64, f64)) -> Self {
+    Self {
+      pair_id: v.0,
+      bid: v.1,
+      ask: v.2,
     }
   }
 }
@@ -300,7 +321,7 @@ mod tests {
   #[test]
   fn test_price_attributes() {
     let price = Price {
-      pair: Pair::from(("CCD", "USD")),
+      pair_id: 1,
       bid: 0.5,
       ask: 0.2,
     };
@@ -310,10 +331,7 @@ mod tests {
     assert!(matches!(res, Ok(_)));
 
     // Debug
-    format!("{:?}", price.clone());
-
-    // Clone + PartialEq
-    assert!(price == price.clone());
+    format!("{:?}", price);
   }
 
   #[test]

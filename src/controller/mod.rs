@@ -1,7 +1,7 @@
 pub mod auth;
 
 use crate::authentication::{Claims, Role};
-use crate::model::{Account, Block, Price, Reward, Status};
+use crate::model::{Account, Block, Pair, Price, Reward, Status};
 use crate::repository::*;
 use axum::{
   extract::{Extension, Path, Query},
@@ -19,6 +19,7 @@ type Result<T> = std::result::Result<T, AppError>;
 #[derive(Debug)]
 pub enum AppError {
   AccountNotFound,
+  PairNotFound,
   PriceNotFound,
   WrongCredentials,
   Forbidden,
@@ -31,6 +32,7 @@ impl IntoResponse for AppError {
   fn into_response(self) -> Response {
     let (status, message) = match self {
       Self::AccountNotFound => (StatusCode::NOT_FOUND, "account does not exist"),
+      Self::PairNotFound => (StatusCode::NOT_FOUND, "pair does not exist"),
       Self::PriceNotFound => (StatusCode::NOT_FOUND, "price does not exist"),
       Self::WrongCredentials => (StatusCode::UNAUTHORIZED, "wrong credentials"),
       Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
@@ -104,18 +106,44 @@ pub async fn get_account_rewards(
   Ok(rewards.into())
 }
 
-/// A controller to return the price of a pair. The pair is represented with
-/// `${base}:${quote}` as an identifier.
+#[derive(Deserialize, Debug)]
+pub struct CreatePair {
+  base: String,
+  quote: String,
+}
+
+// A controller to create a pair.
+pub async fn create_pair(request: Json<CreatePair>, repository: Extension<DynPriceRepository>, claims: Claims) -> Result<Json<Pair>> {
+  if !claims.has_role(Role::Admin) {
+    return Err(AppError::Forbidden);
+  }
+
+  let new_pair = models::NewPair{
+    base: request.base.clone(),
+    quote: request.quote.clone(),
+  };
+
+  let pair = repository.create_pair(new_pair).await.map_err(map_internal_error)?;
+
+  Ok(pair.into())
+}
+
+/// A controller to return all the pairs.
+pub async fn get_pairs(repository: Extension<DynPriceRepository>, _: Claims) -> Result<Json<Vec<Pair>>> {
+  let pairs = repository.get_pairs().await.map_err(map_pair_error)?;
+
+  Ok(pairs.into())
+}
+
+/// A controller to return the price of a pair.
 pub async fn get_price(
-  Path(pair): Path<String>,
+  Path(pair_id): Path<i32>,
   Extension(repository): Extension<DynPriceRepository>,
   _: Claims,
 ) -> Result<Json<Price>> {
-  // Split the identifier into the two parts. If unsuccessful, an default
-  // empty pair is returned.
-  let parts = pair.as_str().split_once(':').unwrap_or(("", ""));
+  let pair = repository.get_pair(pair_id).await.map_err(map_pair_error)?;
 
-  let price = repository.get_price(&parts.into()).await.map_err(|e| match e {
+  let price = repository.get_price(&pair).await.map_err(|e| match e {
     RepositoryError::NotFound => AppError::PriceNotFound,
     _ => {
       error!("unable to find a price: {}", e);
@@ -161,6 +189,17 @@ fn map_account_error(e: RepositoryError) -> AppError {
     RepositoryError::NotFound => AppError::AccountNotFound,
     _ => {
       error!("unable to read the account: {}", e);
+
+      AppError::Internal
+    }
+  }
+}
+
+fn map_pair_error(e: RepositoryError) -> AppError {
+  match e {
+    RepositoryError::NotFound => AppError::PairNotFound,
+    _ => {
+      error!("unable to find a pair: {}", e);
 
       AppError::Internal
     }
@@ -396,41 +435,42 @@ mod tests {
   async fn test_get_price() {
     let mut repository = MockPriceRepository::new();
 
-    let pair = Pair::from(("CCD", "USD"));
-    let bid = 0.1;
-    let ask = 0.2;
+    repository
+      .expect_get_pair()
+      .with(eq(1))
+      .times(1)
+      .returning(|id| Ok((id, "CDD", "USD").into()));
 
     repository
       .expect_get_price()
-      .with(eq(pair))
+      .with(eq(Pair::from((1, "CDD", "USD"))))
       .times(1)
-      .returning(move |pair| Ok(Price::new(pair.clone(), bid, ask)));
+      .returning(|_| Ok((1, 0.1, 0.2).into()));
 
-    let res = get_price(
-      Path("CCD:USD".into()),
-      Extension(Arc::new(repository)),
-      Claims::default(),
-    )
-    .await
-    .unwrap();
+    let res = get_price(Path(1), Extension(Arc::new(repository)), Claims::default())
+      .await
+      .unwrap();
 
-    assert_eq!(bid, res.bid());
-    assert_eq!(ask, res.ask());
+    assert_eq!(res.0, (1, 0.1, 0.2).into());
   }
 
   #[tokio::test]
   async fn test_get_price_not_found() {
     let mut repository = MockPriceRepository::new();
 
-    let pair = Pair::from(("", ""));
+    repository
+      .expect_get_pair()
+      .with(eq(42))
+      .times(1)
+      .returning(|id| Ok((id, "CDD", "USD").into()));
 
     repository
       .expect_get_price()
-      .with(eq(pair))
+      .with(eq(Pair::from((42, "CDD", "USD"))))
       .times(1)
       .returning(move |_| Err(RepositoryError::NotFound));
 
-    let res = get_price(Path("".into()), Extension(Arc::new(repository)), Claims::default()).await;
+    let res = get_price(Path(42), Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::PriceNotFound)));
   }

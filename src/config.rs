@@ -1,5 +1,4 @@
 use crate::client::{node::Client, DynNodeClient};
-use crate::model::Pair;
 use jsonwebtoken::{errors, DecodingKey, EncodingKey};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -61,7 +60,6 @@ pub struct Config {
   listen_address: SocketAddr,
   client: Option<ClientCfg>,
   jobs: Option<HashMap<Job, String>>,
-  pairs: Option<Vec<Pair>>,
 }
 
 impl Config {
@@ -91,10 +89,6 @@ impl Config {
 
   pub fn get_jobs(&self) -> Option<&HashMap<Job, String>> {
     self.jobs.as_ref()
-  }
-
-  pub fn get_pairs(&self) -> Option<&Vec<Pair>> {
-    self.pairs.as_ref()
   }
 
   pub fn make_client(&self) -> DynNodeClient {
@@ -127,7 +121,6 @@ impl Default for Config {
       listen_address: SocketAddr::from(([127, 0, 0, 1], 0)),
       client: Some(ClientCfg::default()),
       jobs: None,
-      pairs: None,
     }
   }
 }

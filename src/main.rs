@@ -119,7 +119,7 @@ async fn main() -> Result<()> {
 async fn prepare_jobs(deps: &Dependencies) -> Jobber {
   let mut scheduler = job::Scheduler::new();
 
-  let price_client = bitfinex::BitfinexClient::default();
+  let price_client = Box::new(bitfinex::BitfinexClient::default());
 
   let node_client = deps.cfg.make_client();
 
@@ -134,15 +134,10 @@ async fn prepare_jobs(deps: &Dependencies) -> Jobber {
           node_client.clone(),
           deps.account.clone(),
         )),
-        config::Job::PriceRefresher => {
-          let mut job = job::price::PriceRefresher::new(price_client.clone(), deps.price.clone());
-
-          for pair in deps.cfg.get_pairs().unwrap_or(&vec![]) {
-            job.follow_pair(pair.clone());
-          }
-
-          Box::new(job)
-        }
+        config::Job::PriceRefresher => Box::new(job::price::PriceRefresher::new(
+          price_client.clone(),
+          deps.price.clone(),
+        )),
         config::Job::BlockFetcher => Box::new(job::block::BlockFetcher::new(
           node_client.clone(),
           deps.block.clone(),
@@ -175,7 +170,9 @@ async fn create_app(deps: &Dependencies) -> Result<Router> {
       .route("/accounts", post(controller::create_account))
       .route("/accounts/:addr", get(controller::get_account))
       .route("/accounts/:addr/rewards", get(controller::get_account_rewards))
-      .route("/prices/:pair", get(controller::get_price))
+      .route("/pairs", post(controller::create_pair))
+      .route("/pairs", get(controller::get_pairs))
+      .route("/pairs/:pair_id/price", get(controller::get_price))
       .route("/blocks", get(controller::get_blocks))
       .layer(Extension(deps.account.clone()))
       .layer(Extension(deps.price.clone()))

@@ -1,45 +1,36 @@
 use super::{AsyncJob, Status};
-use crate::client::PriceClient;
-use crate::model::Pair;
+use crate::client::BoxedPriceClient;
 use crate::repository::{models, DynPriceRepository};
 
-type Client = Box<dyn PriceClient + Sync + Send>;
-
 pub struct PriceRefresher {
-  client: Client,
+  client: BoxedPriceClient,
   repository: DynPriceRepository,
-  pairs: Vec<Pair>,
 }
 
 impl PriceRefresher {
-  pub fn new<C>(client: C, repository: DynPriceRepository) -> Self
-  where
-    C: PriceClient + Send + Sync + 'static,
-  {
+  pub fn new(client: BoxedPriceClient, repository: DynPriceRepository) -> Self {
     Self {
-      client: Box::new(client),
-      repository: repository,
-      pairs: vec![],
+      client,
+      repository,
     }
-  }
-
-  /// It adds the pair to the list of followed prices.
-  pub fn follow_pair(&mut self, pair: Pair) {
-    self.pairs.push(pair);
   }
 }
 
 #[async_trait]
 impl AsyncJob for PriceRefresher {
   async fn execute(&self) -> Status {
-    let prices = self.client.get_prices(&self.pairs).await?;
+    let pairs = self.repository.get_pairs().await?;
+
+    let prices = self.client.get_prices(pairs).await?;
 
     for price in prices {
       let new_price = models::Price {
-        base: price.pair().base().to_string(),
-        quote: price.pair().quote().to_string(),
-        bid: price.bid(),
-        ask: price.ask(),
+        pair_id: price.pair.get_id(),
+        bid: price.bid,
+        ask: price.ask,
+        daily_change_relative: 0.0,
+        high: 0.0,
+        low: 0.0,
       };
 
       self.repository.set_price(new_price).await?;
@@ -52,52 +43,49 @@ impl AsyncJob for PriceRefresher {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::model::{Pair, Price};
-  use crate::repository::MockPriceRepository;
-  use mockall::mock;
+  use crate::client::bitfinex::{MockPriceClient, Price as ClientPrice};
+  use crate::repository::{models, MockPriceRepository};
   use mockall::predicate::*;
   use std::sync::Arc;
 
-  mock! {
-      pub Client {
-          fn get_prices(&self, pairs: &Vec<Pair>) -> crate::client::Result<Vec<Price>>;
-      }
-  }
-
-  #[async_trait]
-  impl PriceClient for MockClient {
-    async fn get_prices(&self, pairs: &Vec<Pair>) -> crate::client::Result<Vec<Price>> {
-      self.get_prices(pairs)
-    }
-  }
-
   #[tokio::test]
   async fn test_execute() {
-    let mut mock_client = MockClient::new();
-
-    let pair: Pair = ("CCD", "USD").into();
+    let mut mock_client = MockPriceClient::new();
 
     mock_client
       .expect_get_prices()
-      .with(eq(vec![pair.clone()]))
+      .with(eq(vec![(1, "CCD", "USD").into()]))
       .times(1)
-      .returning(|_| Ok(vec![Price::new(("CCD", "USD").into(), 2.0, 0.5)]));
+      .returning(|_| {
+        Ok(vec![ClientPrice {
+          pair: (1, "CCD", "USD").into(),
+          bid: 2.0,
+          ask: 0.5,
+        }])
+      });
 
     let mut mock_repository = MockPriceRepository::new();
 
     mock_repository
+      .expect_get_pairs()
+      .with()
+      .times(1)
+      .returning(|| Ok(vec![(1, "CCD", "USD").into()]));
+
+    mock_repository
       .expect_set_price()
       .with(eq(models::Price {
-        base: "CCD".into(),
-        quote: "USD".into(),
+        pair_id: 1,
         bid: 2.0,
         ask: 0.5,
+        daily_change_relative: 0.0,
+        high: 0.0,
+        low: 0.0,
       }))
       .times(1)
       .returning(|_| Ok(()));
 
-    let mut job = PriceRefresher::new(mock_client, Arc::new(mock_repository));
-    job.follow_pair(pair.clone());
+    let job = PriceRefresher::new(Box::new(mock_client), Arc::new(mock_repository));
 
     let res = job.execute().await;
 
