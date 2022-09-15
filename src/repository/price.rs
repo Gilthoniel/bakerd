@@ -1,6 +1,7 @@
 use super::{AsyncPool, PoolError, RepositoryError, Result};
 use crate::model::{Pair, Price};
 use crate::schema::pairs::dsl::*;
+use crate::schema::pairs::table;
 use crate::schema::prices::dsl::*;
 use diesel::prelude::*;
 use diesel::replace_into;
@@ -16,6 +17,21 @@ pub mod models {
     pub id: i32,
     pub base: String,
     pub quote: String,
+  }
+
+  #[derive(PartialEq, Debug)]
+  pub struct PairFilter<'a> {
+    pub base: Option<&'a str>,
+    pub quote: Option<&'a str>,
+  }
+
+  impl Default for PairFilter<'_> {
+    fn default() -> Self {
+      Self {
+        base: None,
+        quote: None,
+      }
+    }
   }
 
   #[derive(Insertable, PartialEq, Debug)]
@@ -46,7 +62,7 @@ pub trait PriceRepository {
   async fn get_pair(&self, pair: i32) -> Result<Pair>;
 
   /// It returns all the pairs present in the storage.
-  async fn get_pairs(&self) -> Result<Vec<Pair>>;
+  async fn get_pairs<'a>(&self, filter: models::PairFilter<'a>) -> Result<Vec<Pair>>;
 
   /// It creates a new pair from the parameters and returns the new one with generated values.
   async fn create_pair(&self, new_pair: models::NewPair) -> Result<Pair>;
@@ -89,8 +105,22 @@ impl PriceRepository for SqlitePriceRepository {
   }
 
   /// It returns all the pairs present in the storage.
-  async fn get_pairs(&self) -> Result<Vec<Pair>> {
-    let records: Vec<models::Pair> = self.pool.exec(|mut conn| pairs.load(&mut conn)).await?;
+  async fn get_pairs<'a>(&self, filter: models::PairFilter<'a>) -> Result<Vec<Pair>> {
+    let records: Vec<models::Pair> = self
+      .pool
+      .exec(|mut conn| {
+        let mut query = table.into_boxed();
+
+        if let Some(b) = filter.base {
+          query = query.filter(base.eq(b));
+        }
+        if let Some(q) = filter.quote {
+          query = query.filter(quote.eq(q));
+        }
+
+        query.load(&mut conn)
+      })
+      .await?;
 
     Ok(records.into_iter().map(Pair::from).collect())
   }
@@ -157,13 +187,18 @@ mod tests {
     let repository = SqlitePriceRepository::new(pool);
 
     let pair = repository
-      .create_pair(models::NewPair{
+      .create_pair(models::NewPair {
         base: "ETH".into(),
         quote: "USD".into(),
       })
       .await?;
 
-    let res = repository.get_pairs().await?;
+    let filter = models::PairFilter {
+      base: Some("ETH"),
+      quote: Some("USD"),
+    };
+
+    let res = repository.get_pairs(filter).await?;
     assert_eq!(1, res.len());
     assert_eq!(pair, res[0]);
 

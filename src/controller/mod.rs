@@ -132,9 +132,24 @@ pub async fn create_pair(
   Ok(pair.into())
 }
 
+#[derive(Deserialize, Debug)]
+pub struct PairFilter {
+  base: Option<String>,
+  quote: Option<String>,
+}
+
 /// A controller to return all the pairs.
-pub async fn get_pairs(repository: Extension<DynPriceRepository>, _: Claims) -> Result<Json<Vec<Pair>>> {
-  let pairs = repository.get_pairs().await.map_err(map_pair_error)?;
+pub async fn get_pairs(
+  query: Query<PairFilter>,
+  repository: Extension<DynPriceRepository>,
+  _: Claims,
+) -> Result<Json<Vec<Pair>>> {
+  let filter = models::PairFilter {
+    base: query.base.as_ref().map(String::as_str),
+    quote: query.quote.as_ref().map(String::as_str),
+  };
+
+  let pairs = repository.get_pairs(filter).await.map_err(map_pair_error)?;
 
   Ok(pairs.into())
 }
@@ -281,7 +296,7 @@ mod tests {
 
     let res: CreateAccount = serde_json::from_str(value).expect("it should be deserialized");
 
-    let expect = CreateAccount{
+    let expect = CreateAccount {
       address: "some-address".into(),
     };
 
@@ -496,11 +511,16 @@ mod tests {
   async fn test_get_pairs() {
     let mut repository = MockPriceRepository::new();
 
-    repository.expect_get_pairs().with().times(1).returning(|| Ok(vec![]));
+    repository.expect_get_pairs().times(1).returning(|_| Ok(vec![]));
 
     let claims = Claims::default();
 
-    let res = get_pairs(Extension(Arc::new(repository)), claims).await;
+    let filter = PairFilter {
+      base: None,
+      quote: None,
+    };
+
+    let res = get_pairs(Query(filter), Extension(Arc::new(repository)), claims).await;
 
     assert!(matches!(res, Ok(_)));
   }
@@ -606,7 +626,7 @@ mod tests {
 
     let res: BlockFilter = serde_json::from_str(value).unwrap();
 
-    let expect = BlockFilter{
+    let expect = BlockFilter {
       baker: Some(42),
       since_ms: Some(1000),
     };

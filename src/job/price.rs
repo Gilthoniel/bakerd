@@ -19,7 +19,7 @@ impl PriceRefresher {
 #[async_trait]
 impl AsyncJob for PriceRefresher {
   async fn execute(&self) -> Status {
-    let pairs = self.repository.get_pairs().await?;
+    let pairs = self.repository.get_pairs(models::PairFilter::default()).await?;
 
     let prices = self.client.get_prices(pairs).await?;
 
@@ -71,9 +71,9 @@ mod tests {
 
     mock_repository
       .expect_get_pairs()
-      .with()
+      .withf(|filter| *filter == models::PairFilter::default())
       .times(1)
-      .returning(|| Ok(vec![(1, "CCD", "USD").into()]));
+      .returning(|_| Ok(vec![(1, "CCD", "USD").into()]));
 
     mock_repository
       .expect_set_price()

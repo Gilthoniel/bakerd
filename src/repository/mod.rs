@@ -152,7 +152,7 @@ impl AsyncPool {
   /// It takes a list of statements to execute on a database connection.
   pub async fn exec<F, T>(&self, stmt: F) -> PoolResult<T>
   where
-    F: FnOnce(Connection) -> QueryResult<T> + Send + 'static,
+    F: FnOnce(Connection) -> QueryResult<T> + Send,
     T: Send + 'static,
   {
     tokio::task::block_in_place(|| {
