@@ -18,7 +18,7 @@ pub mod models {
     pub quote: String,
   }
 
-  #[derive(Insertable)]
+  #[derive(Insertable, PartialEq, Debug)]
   #[diesel(table_name = pairs)]
   pub struct NewPair {
     pub base: String,
@@ -147,6 +147,31 @@ fn map_not_found(e: PoolError) -> RepositoryError {
 mod tests {
   use super::*;
   use crate::repository::RepositoryError;
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn test_create_and_get_pairs() -> Result<()> {
+    let pool = AsyncPool::open(":memory:").unwrap();
+
+    pool.run_migrations().await.unwrap();
+
+    let repository = SqlitePriceRepository::new(pool);
+
+    let pair = repository
+      .create_pair(models::NewPair{
+        base: "ETH".into(),
+        quote: "USD".into(),
+      })
+      .await?;
+
+    let res = repository.get_pairs().await?;
+    assert_eq!(1, res.len());
+    assert_eq!(pair, res[0]);
+
+    let res = repository.get_pair(pair.get_id()).await?;
+    assert_eq!(pair, res);
+
+    Ok(())
+  }
 
   #[tokio::test(flavor = "multi_thread")]
   async fn test_set_price() -> Result<()> {

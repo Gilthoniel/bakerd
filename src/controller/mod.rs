@@ -113,12 +113,16 @@ pub struct CreatePair {
 }
 
 // A controller to create a pair.
-pub async fn create_pair(request: Json<CreatePair>, repository: Extension<DynPriceRepository>, claims: Claims) -> Result<Json<Pair>> {
+pub async fn create_pair(
+  request: Json<CreatePair>,
+  repository: Extension<DynPriceRepository>,
+  claims: Claims,
+) -> Result<Json<Pair>> {
   if !claims.has_role(Role::Admin) {
     return Err(AppError::Forbidden);
   }
 
-  let new_pair = models::NewPair{
+  let new_pair = models::NewPair {
     base: request.base.clone(),
     quote: request.quote.clone(),
   };
@@ -219,17 +223,19 @@ mod tests {
 
   #[test]
   fn test_app_errors() {
-    assert_eq!(
-      StatusCode::NOT_FOUND,
-      AppError::AccountNotFound.into_response().status(),
-    );
+    let tests = vec![
+      (StatusCode::NOT_FOUND, AppError::AccountNotFound),
+      (StatusCode::NOT_FOUND, AppError::PriceNotFound),
+      (StatusCode::NOT_FOUND, AppError::PairNotFound),
+      (StatusCode::UNAUTHORIZED, AppError::WrongCredentials),
+      (StatusCode::FORBIDDEN, AppError::Forbidden),
+      (StatusCode::INTERNAL_SERVER_ERROR, AppError::Internal),
+    ];
 
-    assert_eq!(StatusCode::NOT_FOUND, AppError::PriceNotFound.into_response().status(),);
-
-    assert_eq!(
-      StatusCode::INTERNAL_SERVER_ERROR,
-      AppError::Internal.into_response().status(),
-    );
+    for test in tests {
+      assert_ne!("", format!("{:?}", &test.1));
+      assert_eq!(test.0, test.1.into_response().status());
+    }
   }
 
   #[tokio::test]
@@ -267,6 +273,20 @@ mod tests {
     let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::Internal)));
+  }
+
+  #[test]
+  fn test_create_account_request() {
+    let value = "{\"address\":\"some-address\"}";
+
+    let res: CreateAccount = serde_json::from_str(value).expect("it should be deserialized");
+
+    let expect = CreateAccount{
+      address: "some-address".into(),
+    };
+
+    assert_eq!(format!("{:?}", res), format!("{:?}", expect));
+    assert_eq!("some-address", res.address);
   }
 
   #[tokio::test]
@@ -431,6 +451,60 @@ mod tests {
     assert!(matches!(res.await, Ok(rewards) if rewards.len() == 1));
   }
 
+  #[test]
+  fn test_create_pair_request() {
+    let value = "{\"base\":\"ETH\",\"quote\":\"CHF\"}";
+
+    let res: CreatePair = serde_json::from_str(value).unwrap();
+
+    let expect = CreatePair {
+      base: "ETH".into(),
+      quote: "CHF".into(),
+    };
+
+    assert_eq!(format!("{:?}", res), format!("{:?}", expect));
+    assert_eq!(res.base, expect.base);
+    assert_eq!(res.quote, expect.quote);
+  }
+
+  #[tokio::test]
+  async fn test_create_pair() {
+    let mut repository = MockPriceRepository::new();
+
+    repository
+      .expect_create_pair()
+      .with(eq(models::NewPair {
+        base: "CCD".into(),
+        quote: "USD".into(),
+      }))
+      .times(1)
+      .returning(|new_pair| Ok(Pair::from((1, new_pair.base.as_str(), new_pair.quote.as_str()))));
+
+    let request = Json(CreatePair {
+      base: "CCD".into(),
+      quote: "USD".into(),
+    });
+
+    let claims = Claims::builder().roles(vec![Role::Admin]).build();
+
+    let res = create_pair(request, Extension(Arc::new(repository)), claims).await;
+
+    assert!(matches!(res, Ok(p) if p.0 == Pair::from((1, "CCD", "USD"))));
+  }
+
+  #[tokio::test]
+  async fn test_get_pairs() {
+    let mut repository = MockPriceRepository::new();
+
+    repository.expect_get_pairs().with().times(1).returning(|| Ok(vec![]));
+
+    let claims = Claims::default();
+
+    let res = get_pairs(Extension(Arc::new(repository)), claims).await;
+
+    assert!(matches!(res, Ok(_)));
+  }
+
   #[tokio::test]
   async fn test_get_price() {
     let mut repository = MockPriceRepository::new();
@@ -455,6 +529,36 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_get_price_no_pair() {
+    let mut repository = MockPriceRepository::new();
+
+    repository
+      .expect_get_pair()
+      .with(eq(42))
+      .times(1)
+      .returning(|_| Err(RepositoryError::NotFound));
+
+    let res = get_price(Path(42), Extension(Arc::new(repository)), Claims::default()).await;
+
+    assert!(matches!(res, Err(AppError::PairNotFound)));
+  }
+
+  #[tokio::test]
+  async fn test_get_price_pair_failed() {
+    let mut repository = MockPriceRepository::new();
+
+    repository
+      .expect_get_pair()
+      .with(eq(42))
+      .times(1)
+      .returning(|_| Err(RepositoryError::Faillable(Box::new(Error::AlreadyInTransaction))));
+
+    let res = get_price(Path(42), Extension(Arc::new(repository)), Claims::default()).await;
+
+    assert!(matches!(res, Err(AppError::Internal)));
+  }
+
+  #[tokio::test]
   async fn test_get_price_not_found() {
     let mut repository = MockPriceRepository::new();
 
@@ -468,11 +572,48 @@ mod tests {
       .expect_get_price()
       .with(eq(Pair::from((42, "CDD", "USD"))))
       .times(1)
-      .returning(move |_| Err(RepositoryError::NotFound));
+      .returning(|_| Err(RepositoryError::NotFound));
 
     let res = get_price(Path(42), Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::PriceNotFound)));
+  }
+
+  #[tokio::test]
+  async fn test_get_price_failed() {
+    let mut repository = MockPriceRepository::new();
+
+    repository
+      .expect_get_pair()
+      .with(eq(42))
+      .times(1)
+      .returning(|id| Ok((id, "CDD", "USD").into()));
+
+    repository
+      .expect_get_price()
+      .with(eq(Pair::from((42, "CDD", "USD"))))
+      .times(1)
+      .returning(|_| Err(RepositoryError::Faillable(Box::new(Error::AlreadyInTransaction))));
+
+    let res = get_price(Path(42), Extension(Arc::new(repository)), Claims::default()).await;
+
+    assert!(matches!(res, Err(AppError::Internal)));
+  }
+
+  #[test]
+  fn test_block_filter() {
+    let value = "{\"baker\":42,\"since_ms\":1000}";
+
+    let res: BlockFilter = serde_json::from_str(value).unwrap();
+
+    let expect = BlockFilter{
+      baker: Some(42),
+      since_ms: Some(1000),
+    };
+
+    assert_eq!(format!("{:?}", res), format!("{:?}", expect));
+    assert_eq!(res.baker, expect.baker);
+    assert_eq!(res.since_ms, expect.since_ms);
   }
 
   #[tokio::test]
