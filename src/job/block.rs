@@ -1,7 +1,7 @@
 use super::{AsyncJob, Status};
 use crate::client::node::BlockInfo;
 use crate::client::DynNodeClient;
-use crate::repository::{models, DynAccountRepository, DynBlockRepository};
+use crate::repository::{models, DynAccountRepository, DynBlockRepository, NewReward, RewardKind};
 use log::{info, warn};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
@@ -87,23 +87,23 @@ impl BlockFetcher {
         info!("rewards found for account `{}`", account.get_address());
 
         // 1. Insert the baker reward.
-        let baker_reward = models::NewReward {
+        let baker_reward = NewReward {
           account_id: account.get_id(),
           block_hash: block_info.block_hash.clone(),
           amount: (*baker).into(),
           epoch_ms: block_info.block_slot_time.timestamp_millis(),
-          kind: models::RewardKind::Baker,
+          kind: RewardKind::Baker,
         };
 
         self.account_repository.set_reward(baker_reward).await?;
 
         // 2. Insert the transaction fee reward.
-        let tx_fee = models::NewReward {
+        let tx_fee = NewReward {
           account_id: account.get_id(),
           block_hash: block_info.block_hash.clone(),
           amount: (*fees).into(),
           epoch_ms: block_info.block_slot_time.timestamp_millis(),
-          kind: models::RewardKind::TransactionFee,
+          kind: RewardKind::TransactionFee,
         };
 
         self.account_repository.set_reward(tx_fee).await?;
@@ -154,11 +154,11 @@ mod tests {
   use super::*;
   use crate::client::node::{BlockInfo, BlockSummary, Event, MockNodeClient};
   use crate::model::{Account, Block};
-  use crate::repository::models::dec;
   use crate::repository::{MockAccountRepository, MockBlockRepository};
   use chrono::Utc;
   use mockall::predicate::*;
   use rust_decimal::Decimal;
+  use rust_decimal_macros::dec;
   use std::sync::Arc;
 
   #[tokio::test]
@@ -239,22 +239,8 @@ mod tests {
       .times(1)
       .returning(|_| {
         Ok(vec![
-          Account::from(models::Account {
-            id: 1,
-            address: ":address-1:".to_string(),
-            balance: dec!(0),
-            stake: dec!(0),
-            lottery_power: 0.0,
-            pending_update: false,
-          }),
-          Account::from(models::Account {
-            id: 2,
-            address: ":address-3:".to_string(),
-            balance: dec!(0),
-            stake: dec!(0),
-            lottery_power: 0.0,
-            pending_update: false,
-          }),
+          Account::new(1, ":address-1:", dec!(0), dec!(0), 0.0),
+          Account::new(2, ":address-3:", dec!(0), dec!(0), 0.0),
         ])
       });
 

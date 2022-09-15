@@ -8,8 +8,8 @@ use serde::Serialize;
 pub struct Account {
   id: i32,
   address: String,
-  available_amount: Decimal,
-  staked_amount: Decimal,
+  balance: Decimal,
+  stake: Decimal,
   lottery_power: f64,
 }
 
@@ -24,15 +24,14 @@ impl Account {
   }
 }
 
-impl From<models::Account> for Account {
-  /// It creates an account from a record of the storage layer.
-  fn from(record: models::Account) -> Self {
+impl Account {
+  pub fn new(id: i32, address: &str, balance: Decimal, stake: Decimal, lottery_power: f64) -> Self {
     Self {
-      id: record.id,
-      address: record.address,
-      available_amount: record.balance.0,
-      staked_amount: record.stake.0,
-      lottery_power: record.lottery_power,
+      id,
+      address: address.to_string(),
+      balance,
+      stake,
+      lottery_power,
     }
   }
 }
@@ -48,16 +47,6 @@ pub enum RewardKind {
   TransactionFee,
 }
 
-impl From<models::RewardKind> for RewardKind {
-  /// It converts an SQL reward kind into the model one.
-  fn from(kind: models::RewardKind) -> Self {
-    match kind {
-      models::RewardKind::Baker => Self::Baker,
-      models::RewardKind::TransactionFee => Self::TransactionFee,
-    }
-  }
-}
-
 /// A reward of a baker which can be either a baker reward or the transaction
 /// fees.
 #[derive(Serialize, Debug)]
@@ -70,15 +59,15 @@ pub struct Reward {
   kind: RewardKind,
 }
 
-impl From<models::Reward> for Reward {
-  fn from(record: models::Reward) -> Self {
+impl Reward {
+  pub fn new(id: i32, account_id: i32, block_hash: &str, amount: Decimal, epoch_ms: i64, kind: RewardKind) -> Self {
     Self {
-      id: record.id,
-      account_id: record.account_id,
-      block_hash: record.block_hash,
-      amount: record.amount.0,
-      epoch_ms: record.epoch_ms,
-      kind: RewardKind::from(record.kind),
+      id,
+      account_id,
+      block_hash: block_hash.to_string(),
+      amount,
+      epoch_ms,
+      kind,
     }
   }
 }
@@ -292,9 +281,9 @@ mod tests {
     let account = Account {
       id: 1,
       address: ":address:".into(),
-      available_amount: Decimal::from(123),
+      balance: Decimal::from(123),
       lottery_power: 0.0,
-      staked_amount: Decimal::from(456),
+      stake: Decimal::from(456),
     };
 
     // Serialize

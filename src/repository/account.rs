@@ -6,7 +6,10 @@ use diesel::prelude::*;
 use diesel::result::Error;
 use std::sync::Arc;
 
-pub mod models {
+pub use models::{NewAccount, NewReward, RewardKind};
+
+mod models {
+  use crate::model;
   use crate::schema::account_rewards;
   use crate::schema::accounts;
   use diesel::backend;
@@ -22,15 +25,15 @@ pub mod models {
 
   #[derive(AsExpression, FromSqlRow, Debug)]
   #[diesel(sql_type = Text)]
-  pub struct Dec(pub Decimal);
+  pub struct BigFloat(pub Decimal);
 
-  impl From<Decimal> for Dec {
+  impl From<Decimal> for BigFloat {
     fn from(v: Decimal) -> Self {
       Self(v)
     }
   }
 
-  impl se::ToSql<Text, Sqlite> for Dec {
+  impl se::ToSql<Text, Sqlite> for BigFloat {
     fn to_sql(&self, out: &mut se::Output<Sqlite>) -> se::Result {
       let e = self.0.to_string();
       out.set_value(e);
@@ -38,21 +41,13 @@ pub mod models {
     }
   }
 
-  impl de::FromSql<Text, Sqlite> for Dec {
+  impl de::FromSql<Text, Sqlite> for BigFloat {
     fn from_sql(value: backend::RawValue<Sqlite>) -> de::Result<Self> {
       let s = <String as de::FromSql<Text, Sqlite>>::from_sql(value)?;
       let res = Decimal::from_str(&s)?;
-      Ok(Dec(res))
+      Ok(BigFloat(res))
     }
   }
-
-  macro_rules! dec {
-    ($v:expr) => {
-      crate::repository::models::Dec(rust_decimal_macros::dec!($v))
-    };
-  }
-
-  pub(crate) use dec;
 
   /// Record of an account state on the blockchain.
   #[derive(Queryable)]
@@ -60,9 +55,22 @@ pub mod models {
     pub id: i32,
     pub address: String,
     pub lottery_power: f64,
-    pub balance: Dec,
-    pub stake: Dec,
+    pub balance: BigFloat,
+    pub stake: BigFloat,
     pub pending_update: bool,
+  }
+
+  impl From<Account> for model::Account {
+    /// It creates an account from a record of the storage layer.
+    fn from(record: Account) -> Self {
+      Self::new(
+        record.id,
+        &record.address,
+        record.balance.0,
+        record.stake.0,
+        record.lottery_power,
+      )
+    }
   }
 
   #[derive(Identifiable)]
@@ -75,8 +83,8 @@ pub mod models {
   #[diesel(table_name = accounts)]
   pub struct NewAccount {
     pub address: String,
-    pub balance: Dec,
-    pub stake: Dec,
+    pub balance: BigFloat,
+    pub stake: BigFloat,
     pub lottery_power: f64,
     pub pending_update: bool,
   }
@@ -85,8 +93,8 @@ pub mod models {
     pub fn new(addr: &str, pending_update: bool) -> Self {
       Self {
         address: addr.into(),
-        balance: dec!(0),
-        stake: dec!(0),
+        balance: BigFloat(Decimal::ZERO),
+        stake: BigFloat(Decimal::ZERO),
         lottery_power: 0.0,
         pending_update,
       }
@@ -101,7 +109,20 @@ pub mod models {
     pub block_hash: String,
     pub epoch_ms: i64,
     pub kind: RewardKind,
-    pub amount: Dec,
+    pub amount: BigFloat,
+  }
+
+  impl From<Reward> for model::Reward {
+    fn from(record: Reward) -> Self {
+      Self::new(
+        record.id,
+        record.account_id,
+        &record.block_hash,
+        record.amount.0,
+        record.epoch_ms,
+        record.kind.into(),
+      )
+    }
   }
 
   // A enumeration of the possible reward kinds.
@@ -110,6 +131,16 @@ pub mod models {
   pub enum RewardKind {
     Baker,
     TransactionFee,
+  }
+
+  impl From<RewardKind> for model::RewardKind {
+    /// It converts an SQL reward kind into the model one.
+    fn from(kind: RewardKind) -> Self {
+      match kind {
+        RewardKind::Baker => Self::Baker,
+        RewardKind::TransactionFee => Self::TransactionFee,
+      }
+    }
   }
 
   impl se::ToSql<Text, Sqlite> for RewardKind {
@@ -138,7 +169,7 @@ pub mod models {
   pub struct NewReward {
     pub account_id: i32,
     pub block_hash: String,
-    pub amount: Dec,
+    pub amount: BigFloat,
     pub epoch_ms: i64,
     pub kind: RewardKind,
   }
@@ -204,7 +235,13 @@ impl AccountRepository for SqliteAccountRepository {
         _ => RepositoryError::from(e),
       })?;
 
-    Ok(Account::from(record))
+    Ok(Account::new(
+      record.id,
+      &record.address,
+      record.balance.0,
+      record.stake.0,
+      record.lottery_power,
+    ))
   }
 
   /// It returns the list of accounts associated with the addresses.
@@ -294,7 +331,7 @@ impl AccountRepository for SqliteAccountRepository {
 mod tests {
   use super::*;
   use crate::repository::AsyncPool;
-  use models::dec;
+  use rust_decimal_macros::dec;
 
   #[tokio::test(flavor = "multi_thread")]
   async fn test_get_account() {
@@ -305,16 +342,16 @@ mod tests {
     let expect = models::Account {
       id: 1,
       address: ":address:".into(),
-      balance: dec!(250.2),
-      stake: dec!(50),
+      balance: dec!(250.2).into(),
+      stake: dec!(50).into(),
       lottery_power: 0.096,
       pending_update: false,
     };
 
     let account = models::NewAccount {
       address: expect.address.clone(),
-      balance: dec!(250.2),
-      stake: dec!(50),
+      balance: dec!(250.2).into(),
+      stake: dec!(50).into(),
       lottery_power: expect.lottery_power,
       pending_update: expect.pending_update,
     };
@@ -349,8 +386,8 @@ mod tests {
 
     let account = models::NewAccount {
       address: ":address:".into(),
-      balance: dec!(250),
-      stake: dec!(50),
+      balance: dec!(250).into(),
+      stake: dec!(50).into(),
       lottery_power: 0.096,
       pending_update: false,
     };
@@ -417,7 +454,7 @@ mod tests {
       .set_reward(models::NewReward {
         account_id: account.get_id(),
         block_hash: ":hash:".to_string(),
-        amount: dec!(125),
+        amount: dec!(125).into(),
         epoch_ms: 0,
         kind: models::RewardKind::Baker,
       })
@@ -428,7 +465,7 @@ mod tests {
       .set_reward(models::NewReward {
         account_id: account.get_id(),
         block_hash: ":hash:".to_string(),
-        amount: dec!(525),
+        amount: dec!(525).into(),
         epoch_ms: 0,
         kind: models::RewardKind::TransactionFee,
       })
@@ -446,14 +483,7 @@ mod tests {
 
     let repository = SqliteAccountRepository::new(pool);
 
-    let account = Account::from(models::Account {
-      id: 1,
-      address: "address".into(),
-      balance: dec!(0),
-      stake: dec!(0),
-      lottery_power: 0.0,
-      pending_update: false,
-    });
+    let account = Account::new(1, "address", dec!(0), dec!(0), 0.0);
 
     let res = repository.get_rewards(&account).await;
 
@@ -472,7 +502,7 @@ mod tests {
       .set_reward(models::NewReward {
         account_id: 1,
         block_hash: ":hash:".to_string(),
-        amount: dec!(525),
+        amount: dec!(525).into(),
         epoch_ms: 0,
         kind: models::RewardKind::TransactionFee,
       })

@@ -2,7 +2,7 @@ use super::{AsyncJob, Status};
 use crate::client::node::Block;
 use crate::client::DynNodeClient;
 use crate::model::Account;
-use crate::repository::{models, DynAccountRepository};
+use crate::repository::{DynAccountRepository, NewAccount};
 use rust_decimal::Decimal;
 
 pub struct RefreshAccountsJob {
@@ -33,7 +33,7 @@ impl RefreshAccountsJob {
     let baker = self.client.get_baker(&last_block.hash, account.get_address()).await?;
 
     // Finally the account is updated in the repository.
-    let mut new_account = models::NewAccount {
+    let mut new_account = NewAccount {
       address: account.get_address().into(),
       balance: (info.account_amount - stake).into(),
       stake: stake.into(),
@@ -71,10 +71,10 @@ impl AsyncJob for RefreshAccountsJob {
 mod tests {
   use super::*;
   use crate::client::node::{AccountInfo, Baker, Block, MockNodeClient};
-  use crate::repository::models::dec;
   use crate::repository::MockAccountRepository;
   use mockall::predicate::*;
   use rust_decimal::Decimal;
+  use rust_decimal_macros::dec;
   use std::sync::Arc;
 
   #[tokio::test]
@@ -116,16 +116,11 @@ mod tests {
 
     let mut repository = MockAccountRepository::new();
 
-    repository.expect_get_for_update().with().times(1).returning(|| {
-      Ok(vec![Account::from(models::Account {
-        id: 1,
-        address: ":address:".into(),
-        balance: dec!(0),
-        stake: dec!(0),
-        lottery_power: 0.0,
-        pending_update: true,
-      })])
-    });
+    repository
+      .expect_get_for_update()
+      .with()
+      .times(1)
+      .returning(|| Ok(vec![Account::new(1, ":address:", dec!(0), dec!(0), 0.0)]));
 
     repository
       .expect_set_account()

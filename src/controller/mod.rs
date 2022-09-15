@@ -70,7 +70,7 @@ pub async fn create_account(
     return Err(AppError::Forbidden);
   }
 
-  let new_account = models::NewAccount::new(&request.address, true);
+  let new_account = NewAccount::new(&request.address, true);
 
   repository.set_account(new_account).await.map_err(map_internal_error)?;
 
@@ -228,12 +228,12 @@ fn map_pair_error(e: RepositoryError) -> AppError {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::model::{Pair, Status as StatusView};
-  use crate::repository::models::dec;
+  use crate::model::{Pair, RewardKind, Status as StatusView};
   use crate::repository::{models, MockAccountRepository, MockPriceRepository, MockStatusRepository};
   use axum::http::StatusCode;
   use diesel::result::Error;
   use mockall::predicate::*;
+  use rust_decimal_macros::dec;
   use std::sync::Arc;
 
   #[test]
@@ -310,16 +310,10 @@ mod tests {
 
     repository.expect_set_account().times(1).returning(|_| Ok(()));
 
-    repository.expect_get_account().times(1).returning(|_| {
-      Ok(Account::from(models::Account {
-        id: 1,
-        address: ":address:".into(),
-        balance: dec!(42),
-        stake: dec!(1),
-        lottery_power: 0.6,
-        pending_update: false,
-      }))
-    });
+    repository
+      .expect_get_account()
+      .times(1)
+      .returning(|_| Ok(Account::new(1, ":address:", dec!(42), dec!(1), 0.6)));
 
     let request = Json(CreateAccount {
       address: ":address:".to_string(),
@@ -351,14 +345,7 @@ mod tests {
   async fn test_get_account() {
     let mut repository = MockAccountRepository::new();
 
-    let account = Account::from(models::Account {
-      id: 1,
-      address: ":address:".into(),
-      balance: dec!(125),
-      stake: dec!(25),
-      lottery_power: 0.06,
-      pending_update: false,
-    });
+    let account = Account::new(1, ":address:", dec!(125), dec!(25), 0.06);
 
     let expect = account.clone();
 
@@ -431,30 +418,21 @@ mod tests {
       .expect_get_account()
       .with(eq(":address:"))
       .times(1)
-      .returning(|_| {
-        Ok(Account::from(models::Account {
-          id: 1,
-          address: ":address:".into(),
-          balance: dec!(125),
-          stake: dec!(50),
-          lottery_power: 0.06,
-          pending_update: false,
-        }))
-      });
+      .returning(|_| Ok(Account::new(1, ":address:", dec!(125), dec!(50), 0.06)));
 
     repository
       .expect_get_rewards()
       .withf(|a| a.get_id() == 1)
       .times(1)
       .returning(|_| {
-        Ok(vec![Reward::from(models::Reward {
-          id: 1,
-          account_id: 1,
-          block_hash: ":hash:".to_string(),
-          amount: dec!(2576),
-          epoch_ms: 0,
-          kind: models::RewardKind::TransactionFee,
-        })])
+        Ok(vec![Reward::new(
+          1,
+          1,
+          ":hash:",
+          dec!(2576),
+          0,
+          RewardKind::TransactionFee,
+        )])
       });
 
     let res = get_account_rewards(
