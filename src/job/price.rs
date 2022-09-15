@@ -28,9 +28,9 @@ impl AsyncJob for PriceRefresher {
         pair_id: price.pair.get_id(),
         bid: price.bid,
         ask: price.ask,
-        daily_change_relative: 0.0,
-        high: 0.0,
-        low: 0.0,
+        daily_change_relative: price.daily_change_relative,
+        high: price.high,
+        low: price.low,
       };
 
       self.repository.set_price(new_price).await?;
@@ -61,6 +61,9 @@ mod tests {
           pair: (1, "CCD", "USD").into(),
           bid: 2.0,
           ask: 0.5,
+          daily_change_relative: 0.01,
+          high: 2.1,
+          low: 0.4,
         }])
       });
 
@@ -78,9 +81,9 @@ mod tests {
         pair_id: 1,
         bid: 2.0,
         ask: 0.5,
-        daily_change_relative: 0.0,
-        high: 0.0,
-        low: 0.0,
+        daily_change_relative: 0.01,
+        high: 2.1,
+        low: 0.4,
       }))
       .times(1)
       .returning(|_| Ok(()));

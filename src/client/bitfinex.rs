@@ -10,6 +10,9 @@ pub struct Price {
   pub pair: Pair,
   pub bid: f64,
   pub ask: f64,
+  pub daily_change_relative: f64,
+  pub high: f64,
+  pub low: f64,
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -99,6 +102,9 @@ impl<E: Executor> PriceClient for BitfinexClient<E> {
         pair: pair,
         bid: ticker.1,
         ask: ticker.3,
+        daily_change_relative: ticker.6,
+        high: ticker.9,
+        low: ticker.10,
       })
       .collect();
 

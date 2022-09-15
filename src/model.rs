@@ -142,6 +142,9 @@ pub struct Price {
   pair_id: i32,
   bid: f64,
   ask: f64,
+  daily_change_relative: f64,
+  high: f64,
+  low: f64,
 }
 
 impl From<models::Price> for Price {
@@ -150,6 +153,9 @@ impl From<models::Price> for Price {
       pair_id: record.pair_id,
       bid: record.bid,
       ask: record.ask,
+      daily_change_relative: record.daily_change_relative,
+      high: record.high,
+      low: record.low,
     }
   }
 }
@@ -160,6 +166,9 @@ impl From<(i32, f64, f64)> for Price {
       pair_id: v.0,
       bid: v.1,
       ask: v.2,
+      daily_change_relative: 0.0,
+      high: v.2,
+      low: v.1,
     }
   }
 }
@@ -324,6 +333,9 @@ mod tests {
       pair_id: 1,
       bid: 0.5,
       ask: 0.2,
+      daily_change_relative: 0.01,
+      high: 1.0,
+      low: 0.0,
     };
 
     // Serialize
