@@ -15,10 +15,6 @@ use std::time::Duration;
 
 pub use self::{account::*, block::*, price::*, status::*, user::*};
 
-pub mod models {
-  pub use super::user::models::*;
-}
-
 /// A embedding of the migrations of the application to package them alongside
 /// the binary.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -59,6 +55,7 @@ impl From<PoolError> for RepositoryError {
   // generic repository error.
   fn from(e: PoolError) -> Self {
     match e {
+      PoolError::Driver(DriverError::NotFound) => RepositoryError::NotFound,
       PoolError::Driver(e) => RepositoryError::Faillable(Box::new(e)),
       PoolError::Faillable(e) => RepositoryError::Faillable(e),
     }

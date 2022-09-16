@@ -1,4 +1,4 @@
-use crate::repository::{models, NodeStatusJson, ResourceStatusJson};
+use crate::repository::{NodeStatusJson, ResourceStatusJson};
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -207,6 +207,14 @@ pub struct User {
 }
 
 impl User {
+  pub fn new(id: i32, username: &str, password: &str) -> Self {
+    Self {
+      id,
+      username: username.to_string(),
+      password: password.to_string(),
+    }
+  }
+
   pub fn get_id(&self) -> i32 {
     self.id
   }
@@ -221,16 +229,6 @@ impl User {
   }
 }
 
-impl From<models::User> for User {
-  fn from(u: models::User) -> Self {
-    Self {
-      id: u.id,
-      username: u.username,
-      password: u.password,
-    }
-  }
-}
-
 #[derive(PartialEq, Debug)]
 pub struct Session {
   id: String,
@@ -240,23 +238,21 @@ pub struct Session {
 }
 
 impl Session {
+  pub fn new(id: &str, user_id: i32, expiration_ms: i64, last_use_ms: i64) -> Self {
+    Self {
+      id: id.to_string(),
+      user_id,
+      expiration_ms,
+      last_use_ms,
+    }
+  }
+
   pub fn get_user_id(&self) -> i32 {
     self.user_id
   }
 
   pub fn get_refresh_token(&self) -> &str {
     &self.id
-  }
-}
-
-impl From<models::Session> for Session {
-  fn from(s: models::Session) -> Self {
-    Self {
-      id: s.id,
-      user_id: s.user_id,
-      expiration_ms: s.expiration_ms,
-      last_use_ms: s.last_use_ms,
-    }
   }
 }
 

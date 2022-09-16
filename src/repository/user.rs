@@ -6,9 +6,12 @@ use diesel::prelude::*;
 use diesel::result::Error;
 use std::sync::Arc;
 
+pub use models::NewUser;
+
 const SESSION_DURATION_MILLIS: i64 = 7 * 24 * 60 * 60 * 1000;
 
-pub mod models {
+mod models {
+  use crate::model;
   use crate::schema::user_sessions;
   use crate::schema::users;
 
@@ -17,6 +20,12 @@ pub mod models {
     pub id: i32,
     pub username: String,
     pub password: String,
+  }
+
+  impl From<User> for model::User {
+    fn from(u: User) -> Self {
+      Self::new(u.id, &u.username, &u.password)
+    }
   }
 
   #[derive(Insertable)]
@@ -39,6 +48,12 @@ pub mod models {
     pub user_id: i32,
     pub expiration_ms: i64,
     pub last_use_ms: i64,
+  }
+
+  impl From<Session> for model::Session {
+    fn from(s: Session) -> Self {
+      Self::new(&s.id, s.user_id, s.expiration_ms, s.last_use_ms)
+    }
   }
 }
 

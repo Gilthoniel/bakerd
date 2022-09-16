@@ -1,7 +1,7 @@
 use super::AppError;
 use crate::authentication::{generate_token, hash_password, Claims, Role, DEFAULT_EXPIRATION};
 use crate::model::{Session, User};
-use crate::repository::{models, DynUserRepository, RepositoryError};
+use crate::repository::{DynUserRepository, NewUser, RepositoryError};
 use axum::{extract::Extension, Json};
 use chrono::Utc;
 use jsonwebtoken::EncodingKey;
@@ -86,7 +86,7 @@ pub async fn create_user(
     return Err(AppError::Forbidden);
   }
 
-  let new_user = models::NewUser {
+  let new_user = NewUser {
     username: request.username.clone(),
     password: hash_password(&request.password),
   };
@@ -145,7 +145,7 @@ fn map_wrong_creds(e: RepositoryError) -> AppError {
 mod tests {
   use super::*;
   use crate::model::Session;
-  use crate::repository::{models, MockUserRepository};
+  use crate::repository::MockUserRepository;
   use jsonwebtoken::EncodingKey;
   use mockall::predicate::*;
   use std::fmt;
@@ -167,22 +167,15 @@ mod tests {
 
     let mut repository = MockUserRepository::new();
 
-    repository.expect_get().times(1).returning(|_| {
-      Ok(User::from(models::User {
-        id: 1,
-        username: "bob".to_string(),
-        password: hash_password("password"),
-      }))
-    });
+    repository
+      .expect_get()
+      .times(1)
+      .returning(|_| Ok(User::new(1, "bob", &hash_password("password"))));
 
-    repository.expect_create_session().times(1).returning(|_, _| {
-      Ok(Session::from(models::Session {
-        id: "refresh-token".into(),
-        user_id: 1,
-        expiration_ms: 0,
-        last_use_ms: 0,
-      }))
-    });
+    repository
+      .expect_create_session()
+      .times(1)
+      .returning(|_, _| Ok(Session::new("refresh-token", 1, 0, 0)));
 
     let creds = Credentials {
       username: "bob".to_string(),
@@ -242,13 +235,10 @@ mod tests {
 
     let mut repository = MockUserRepository::new();
 
-    repository.expect_get().times(1).returning(|_| {
-      Ok(User::from(models::User {
-        id: 1,
-        username: "bob".to_string(),
-        password: hash_password("password"),
-      }))
-    });
+    repository
+      .expect_get()
+      .times(1)
+      .returning(|_| Ok(User::new(1, "bob", &hash_password("password"))));
 
     repository
       .expect_create_session()
@@ -271,13 +261,10 @@ mod tests {
 
     let mut repository = MockUserRepository::new();
 
-    repository.expect_get().times(1).returning(|_| {
-      Ok(User::from(models::User {
-        id: 1,
-        username: "bob".to_string(),
-        password: hash_password("password"),
-      }))
-    });
+    repository
+      .expect_get()
+      .times(1)
+      .returning(|_| Ok(User::new(1, "bob", &hash_password("password"))));
 
     let creds = Credentials {
       username: "bob".to_string(),
@@ -295,22 +282,16 @@ mod tests {
 
     let mut repository = MockUserRepository::new();
 
-    repository.expect_use_session().times(1).returning(|_, _| {
-      Ok(Session::from(models::Session {
-        id: "refresh-token".into(),
-        user_id: 42,
-        expiration_ms: 1500,
-        last_use_ms: 1000,
-      }))
-    });
+    repository
+      .expect_use_session()
+      .times(1)
+      .returning(|_, _| Ok(Session::new("refresh-token", 42, 1500, 1000)));
 
-    repository.expect_get_by_id().with(eq(42)).times(1).returning(|_| {
-      Ok(User::from(models::User {
-        id: 42,
-        username: "bob".to_string(),
-        password: hash_password("password"),
-      }))
-    });
+    repository
+      .expect_get_by_id()
+      .with(eq(42))
+      .times(1)
+      .returning(|_| Ok(User::new(42, "bob", &hash_password("password"))));
 
     let res = refresh_token(
       Extension(Arc::new(repository)),
@@ -351,13 +332,11 @@ mod tests {
 
     repository.expect_create().times(1).returning(|_| Ok(()));
 
-    repository.expect_get().with(eq("bob")).times(1).returning(|_| {
-      Ok(User::from(models::User {
-        id: 1,
-        username: "bob".to_string(),
-        password: hash_password("password"),
-      }))
-    });
+    repository
+      .expect_get()
+      .with(eq("bob"))
+      .times(1)
+      .returning(|_| Ok(User::new(1, "bob", &hash_password("password"))));
 
     let creds = Credentials {
       username: "bob".to_string(),

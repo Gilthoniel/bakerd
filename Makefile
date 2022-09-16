@@ -3,12 +3,16 @@ setup-tools:
 	cargo install grcov
 
 test:
+	rm -rf ./target/report
+
 	@RUSTFLAGS="-C instrument-coverage" LLVM_PROFILE_FILE="target/report/coverage-report.profraw" cargo test
 
 	@grcov . \
 		-s . \
 		--ignore build.rs \
-		--binary-path ./target/debug/deps \
+		--ignore "/*" \
+		--ignore "target/debug/*" \
+		--binary-path ./target/debug \
 		-t html \
 		--branch \
 		--ignore-not-existing \
@@ -23,6 +27,8 @@ test-ci:
 	@grcov . \
 		-s . \
 		--ignore build.rs \
+		--ignore "/*" \
+		--ignore "target/debug/*" \
 		--binary-path ./target/debug/deps \
 		-t lcov \
 		--branch \

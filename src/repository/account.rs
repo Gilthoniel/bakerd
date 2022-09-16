@@ -1,9 +1,8 @@
-use super::{AsyncPool, PoolError, RepositoryError, Result};
+use super::{AsyncPool, Result};
 use crate::model::{Account, Reward};
 use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
 use diesel::prelude::*;
-use diesel::result::Error;
 use std::sync::Arc;
 
 pub use models::{NewAccount, NewReward, RewardKind};
@@ -186,7 +185,7 @@ pub trait AccountRepository {
 
   /// It creates or updates an existing account using the address as the
   /// identifier.
-  async fn set_account(&self, account: models::NewAccount) -> Result<()>;
+  async fn set_account(&self, account: NewAccount) -> Result<()>;
 
   /// It returns the list of rewards known for an account using the address to
   /// identity it.
@@ -194,7 +193,7 @@ pub trait AccountRepository {
 
   /// It creates an account reward if it does not exist already. The reward is
   /// identified by the account, the block and its kind.
-  async fn set_reward(&self, reward: models::NewReward) -> Result<()>;
+  async fn set_reward(&self, reward: NewReward) -> Result<()>;
 
   /// It sets the given either into pending for update, or inversely switch them off.
   async fn set_for_update(&self, addrs: Vec<String>, pending: bool) -> Result<()>;
@@ -229,11 +228,7 @@ impl AccountRepository for SqliteAccountRepository {
     let record: models::Account = self
       .pool
       .exec(|mut conn| accounts.filter(address.eq(addr)).first(&mut conn))
-      .await
-      .map_err(|e| match e {
-        PoolError::Driver(Error::NotFound) => RepositoryError::NotFound,
-        _ => RepositoryError::from(e),
-      })?;
+      .await?;
 
     Ok(Account::new(
       record.id,
@@ -255,7 +250,7 @@ impl AccountRepository for SqliteAccountRepository {
   }
 
   /// It creates or updates an existing account using the address as the identifier.
-  async fn set_account(&self, account: models::NewAccount) -> Result<()> {
+  async fn set_account(&self, account: NewAccount) -> Result<()> {
     self
       .pool
       .exec(move |mut conn| {
@@ -287,7 +282,7 @@ impl AccountRepository for SqliteAccountRepository {
 
   /// It creates an account reward if it does not exist already. The reward is identified by the
   /// account, the block and its kind.
-  async fn set_reward(&self, reward: models::NewReward) -> Result<()> {
+  async fn set_reward(&self, reward: NewReward) -> Result<()> {
     self
       .pool
       .exec(move |mut conn| {
@@ -330,7 +325,7 @@ impl AccountRepository for SqliteAccountRepository {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::repository::AsyncPool;
+  use crate::repository::{AsyncPool, RepositoryError};
   use rust_decimal_macros::dec;
 
   #[tokio::test(flavor = "multi_thread")]
@@ -348,7 +343,7 @@ mod tests {
       pending_update: false,
     };
 
-    let account = models::NewAccount {
+    let account = NewAccount {
       address: expect.address.clone(),
       balance: dec!(250.2).into(),
       stake: dec!(50).into(),
@@ -384,7 +379,7 @@ mod tests {
 
     let repository = SqliteAccountRepository::new(pool);
 
-    let account = models::NewAccount {
+    let account = NewAccount {
       address: ":address:".into(),
       balance: dec!(250).into(),
       stake: dec!(50).into(),
@@ -405,13 +400,9 @@ mod tests {
 
     let repository = SqliteAccountRepository::new(pool);
 
-    repository
-      .set_account(models::NewAccount::new(":address-1:", false))
-      .await?;
+    repository.set_account(NewAccount::new(":address-1:", false)).await?;
 
-    repository
-      .set_account(models::NewAccount::new(":address-2:", true))
-      .await?;
+    repository.set_account(NewAccount::new(":address-2:", true)).await?;
 
     let addresses = vec![":address-1:".to_string(), ":address-2:".to_string()];
 
@@ -444,30 +435,30 @@ mod tests {
     let repository = SqliteAccountRepository::new(pool);
 
     repository
-      .set_account(models::NewAccount::new(":address:", false))
+      .set_account(NewAccount::new(":address:", false))
       .await
       .unwrap();
 
     let account = repository.get_account(":address:").await.unwrap();
 
     repository
-      .set_reward(models::NewReward {
+      .set_reward(NewReward {
         account_id: account.get_id(),
         block_hash: ":hash:".to_string(),
         amount: dec!(125).into(),
         epoch_ms: 0,
-        kind: models::RewardKind::Baker,
+        kind: RewardKind::Baker,
       })
       .await
       .unwrap();
 
     repository
-      .set_reward(models::NewReward {
+      .set_reward(NewReward {
         account_id: account.get_id(),
         block_hash: ":hash:".to_string(),
         amount: dec!(525).into(),
         epoch_ms: 0,
-        kind: models::RewardKind::TransactionFee,
+        kind: RewardKind::TransactionFee,
       })
       .await
       .unwrap();
@@ -499,12 +490,12 @@ mod tests {
     let repository = SqliteAccountRepository::new(pool);
 
     let res = repository
-      .set_reward(models::NewReward {
+      .set_reward(NewReward {
         account_id: 1,
         block_hash: ":hash:".to_string(),
         amount: dec!(525).into(),
         epoch_ms: 0,
-        kind: models::RewardKind::TransactionFee,
+        kind: RewardKind::TransactionFee,
       })
       .await;
 
@@ -519,17 +510,11 @@ mod tests {
 
     let repository = SqliteAccountRepository::new(pool);
 
-    repository
-      .set_account(models::NewAccount::new(":address-1:", true))
-      .await?;
+    repository.set_account(NewAccount::new(":address-1:", true)).await?;
 
-    repository
-      .set_account(models::NewAccount::new(":address-2:", false))
-      .await?;
+    repository.set_account(NewAccount::new(":address-2:", false)).await?;
 
-    repository
-      .set_account(models::NewAccount::new(":address-3:", false))
-      .await?;
+    repository.set_account(NewAccount::new(":address-3:", false)).await?;
 
     repository
       .set_for_update(vec![":address-1:".into(), ":address-2:".into()], true)
