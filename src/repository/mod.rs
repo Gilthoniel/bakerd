@@ -16,7 +16,6 @@ use std::time::Duration;
 pub use self::{account::*, block::*, price::*, status::*, user::*};
 
 pub mod models {
-  pub use super::block::models::*;
   pub use super::price::models::*;
   pub use super::status::models::*;
   pub use super::user::models::*;

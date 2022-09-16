@@ -1,7 +1,7 @@
 use super::{AsyncJob, Status};
 use crate::client::node::BlockInfo;
 use crate::client::DynNodeClient;
-use crate::repository::{models, DynAccountRepository, DynBlockRepository, NewReward, RewardKind};
+use crate::repository::{NewBlock, DynAccountRepository, DynBlockRepository, NewReward, RewardKind};
 use log::{info, warn};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
@@ -37,7 +37,7 @@ impl BlockFetcher {
     // Insert the account rewards before processing the block.
     self.do_rewards(&info).await?;
 
-    let new_block = models::NewBlock {
+    let new_block = NewBlock {
       hash: info.block_hash,
       height: info.block_height,
       slot_time_ms: info.block_slot_time.timestamp_millis(),
@@ -214,13 +214,7 @@ mod tests {
     let mut block_repository = MockBlockRepository::new();
 
     block_repository.expect_get_last_block().times(1).returning(|| {
-      Ok(Block::from(models::Block {
-        id: 1,
-        height: 100,
-        hash: ":hash-100:".to_string(),
-        slot_time_ms: 0,
-        baker: 42,
-      }))
+      Ok(Block::new(1, 100, ":hash-100:", 0, 42))
     });
 
     block_repository.expect_store().times(1).returning(|_| Ok(()));

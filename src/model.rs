@@ -173,20 +173,18 @@ pub struct Block {
 }
 
 impl Block {
+  pub fn new(id: i32, height: i64, hash: &str, slot_time_ms: i64, baker: i64) -> Self {
+    Self {
+      id,
+      height,
+      hash: hash.to_string(),
+      slot_time_ms,
+      baker,
+    }
+  }
+
   pub fn get_height(&self) -> i64 {
     self.height
-  }
-}
-
-impl From<models::Block> for Block {
-  fn from(record: models::Block) -> Self {
-    Self {
-      id: record.id,
-      height: record.height,
-      hash: record.hash,
-      slot_time_ms: record.slot_time_ms,
-      baker: record.baker,
-    }
   }
 }
 

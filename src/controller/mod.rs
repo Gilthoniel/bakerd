@@ -133,14 +133,14 @@ pub async fn create_pair(
 }
 
 #[derive(Deserialize, Debug)]
-pub struct PairFilter {
+pub struct PairQuery {
   base: Option<String>,
   quote: Option<String>,
 }
 
 /// A controller to return all the pairs.
 pub async fn get_pairs(
-  query: Query<PairFilter>,
+  query: Query<PairQuery>,
   repository: Extension<DynPriceRepository>,
   _: Claims,
 ) -> Result<Json<Vec<Pair>>> {
@@ -175,7 +175,7 @@ pub async fn get_price(
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BlockFilter {
+pub struct BlockQuery {
   baker: Option<i64>,
   since_ms: Option<i64>,
 }
@@ -183,11 +183,11 @@ pub struct BlockFilter {
 /// A controller to return the list of blocks indexed in the storage. The list can be filtered by
 /// baker and slot time.
 pub async fn get_blocks(
-  params: Query<BlockFilter>,
+  params: Query<BlockQuery>,
   repository: Extension<DynBlockRepository>,
   _: Claims,
 ) -> Result<Json<Vec<Block>>> {
-  let filter = models::BlockFilter {
+  let filter = BlockFilter {
     baker: params.baker,
     since_ms: params.since_ms,
   };
@@ -493,7 +493,7 @@ mod tests {
 
     let claims = Claims::default();
 
-    let filter = PairFilter {
+    let filter = PairQuery {
       base: None,
       quote: None,
     };
@@ -602,9 +602,9 @@ mod tests {
   fn test_block_filter() {
     let value = "{\"baker\":42,\"since_ms\":1000}";
 
-    let res: BlockFilter = serde_json::from_str(value).unwrap();
+    let res: BlockQuery = serde_json::from_str(value).unwrap();
 
-    let expect = BlockFilter {
+    let expect = BlockQuery {
       baker: Some(42),
       since_ms: Some(1000),
     };
@@ -620,22 +620,16 @@ mod tests {
 
     repository
       .expect_get_all()
-      .with(eq(models::BlockFilter {
+      .with(eq(BlockFilter {
         baker: Some(42),
         since_ms: Some(1200),
       }))
       .times(1)
       .returning(|_| {
-        Ok(vec![Block::from(models::Block {
-          id: 1,
-          height: 100,
-          hash: ":hash-block-100:".into(),
-          slot_time_ms: 1500,
-          baker: 42,
-        })])
+        Ok(vec![Block::new(1, 100, ":hash-block-100:", 1500, 42)])
       });
 
-    let filter = BlockFilter {
+    let filter = BlockQuery {
       baker: Some(42),
       since_ms: Some(1200),
     };

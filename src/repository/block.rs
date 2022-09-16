@@ -6,7 +6,10 @@ use diesel::prelude::*;
 use diesel::result::Error;
 use std::sync::Arc;
 
-pub mod models {
+pub use models::{NewBlock, BlockFilter};
+
+mod models {
+  use crate::model;
   use crate::schema::blocks;
 
   #[derive(Queryable)]
@@ -16,6 +19,12 @@ pub mod models {
     pub hash: String,
     pub slot_time_ms: i64,
     pub baker: i64,
+  }
+
+  impl From<Block> for model::Block {
+    fn from(b: Block) -> Self {
+      Self::new(b.id, b.height, &b.hash, b.slot_time_ms, b.baker)
+    }
   }
 
   #[derive(Insertable, Clone)]
