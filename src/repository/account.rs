@@ -2,10 +2,11 @@ use super::{AsyncPool, Result};
 use crate::model::{Account, Reward};
 use crate::schema::account_rewards::dsl as reward_dsl;
 use crate::schema::accounts::dsl::*;
+use crate::schema::accounts::table;
 use diesel::prelude::*;
 use std::sync::Arc;
 
-pub use models::{NewAccount, NewReward, RewardKind};
+pub use models::{AccountFilter, NewAccount, NewReward, RewardKind};
 
 mod models {
   use crate::model;
@@ -57,6 +58,11 @@ mod models {
     pub balance: BigFloat,
     pub stake: BigFloat,
     pub pending_update: bool,
+  }
+
+  #[derive(Default)]
+  pub struct AccountFilter<'a> {
+    pub addresses: Option<Vec<&'a str>>,
   }
 
   impl From<Account> for model::Account {
@@ -181,7 +187,7 @@ pub trait AccountRepository {
   async fn get_account(&self, addr: &str) -> Result<Account>;
 
   /// It returns the list of accounts associated with the addresses.
-  async fn get_all(&self, addrs: Vec<String>) -> Result<Vec<Account>>;
+  async fn get_accounts<'a>(&self, filter: AccountFilter<'a>) -> Result<Vec<Account>>;
 
   /// It creates or updates an existing account using the address as the
   /// identifier.
@@ -240,10 +246,17 @@ impl AccountRepository for SqliteAccountRepository {
   }
 
   /// It returns the list of accounts associated with the addresses.
-  async fn get_all(&self, addrs: Vec<String>) -> Result<Vec<Account>> {
+  async fn get_accounts<'a>(&self, filter: AccountFilter<'a>) -> Result<Vec<Account>> {
     let records: Vec<models::Account> = self
       .pool
-      .exec(|mut conn| accounts.filter(address.eq_any(addrs)).load(&mut conn))
+      .exec(|mut conn| {
+        let mut query = table.into_boxed();
+        if let Some(addresses) = filter.addresses {
+          query = query.filter(address.eq_any(addresses))
+        }
+
+        query.load(&mut conn)
+      })
       .await?;
 
     Ok(records.into_iter().map(Account::from).collect())
@@ -393,7 +406,7 @@ mod tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
-  async fn test_get_all() -> Result<()> {
+  async fn test_get_accounts() -> Result<()> {
     let pool = AsyncPool::open(":memory:")?;
 
     pool.run_migrations().await?;
@@ -404,9 +417,11 @@ mod tests {
 
     repository.set_account(NewAccount::new(":address-2:", true)).await?;
 
-    let addresses = vec![":address-1:".to_string(), ":address-2:".to_string()];
+    let filter = AccountFilter {
+      addresses: Some(vec![":address-1:", ":address-2:"]),
+    };
 
-    let res = repository.get_all(addresses).await?;
+    let res = repository.get_accounts(filter).await?;
 
     assert_eq!(res.len(), 2);
 
@@ -414,12 +429,12 @@ mod tests {
   }
 
   #[tokio::test(flavor = "multi_thread")]
-  async fn test_get_all_failure() -> Result<()> {
+  async fn test_get_accounts_failure() -> Result<()> {
     let pool = AsyncPool::open(":memory:")?;
 
     let repository = SqliteAccountRepository::new(pool);
 
-    let res = repository.get_all(vec![]).await;
+    let res = repository.get_accounts(AccountFilter::default()).await;
 
     assert!(matches!(res, Err(RepositoryError::Faillable(_))));
 

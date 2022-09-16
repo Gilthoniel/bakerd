@@ -1,7 +1,7 @@
 use super::{AsyncJob, Status};
 use crate::client::node::BlockInfo;
 use crate::client::DynNodeClient;
-use crate::repository::{DynAccountRepository, DynBlockRepository, NewBlock, NewReward, RewardKind};
+use crate::repository::*;
 use log::{info, warn};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
@@ -79,7 +79,9 @@ impl BlockFetcher {
 
     let accounts = self
       .account_repository
-      .get_all(rewards.keys().cloned().collect())
+      .get_accounts(AccountFilter {
+        addresses: Some(rewards.keys().map(String::as_str).collect()),
+      })
       .await?;
 
     for account in accounts {
@@ -229,8 +231,8 @@ mod tests {
     let mut account_repository = MockAccountRepository::new();
 
     account_repository
-      .expect_get_all()
-      .withf(|addrs| addrs.len() == 2)
+      .expect_get_accounts()
+      .withf(|filter| filter.addresses == Some(vec![":address-1:", ":address-2:"]))
       .times(1)
       .returning(|_| {
         Ok(vec![
