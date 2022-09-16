@@ -8,7 +8,10 @@ use diesel::replace_into;
 use diesel::result::Error;
 use std::sync::Arc;
 
-pub mod models {
+pub use models::{NewPair, PairFilter, Price as NewPrice};
+
+mod models {
+  use crate::model;
   use crate::schema::pairs;
   use crate::schema::prices;
 
@@ -17,6 +20,12 @@ pub mod models {
     pub id: i32,
     pub base: String,
     pub quote: String,
+  }
+
+  impl From<Pair> for model::Pair {
+    fn from(p: Pair) -> Self {
+      Self::from((p.id, p.base.as_str(), p.quote.as_str()))
+    }
   }
 
   #[derive(PartialEq, Debug)]
@@ -51,6 +60,12 @@ pub mod models {
     pub high: f64,
     pub low: f64,
   }
+
+  impl From<Price> for model::Price {
+    fn from(p: Price) -> Self {
+      Self::new(p.pair_id, p.bid, p.ask, p.daily_change_relative, p.high, p.low)
+    }
+  }
 }
 
 /// A repository to set and get prices of pairs.
@@ -62,16 +77,16 @@ pub trait PriceRepository {
   async fn get_pair(&self, pair: i32) -> Result<Pair>;
 
   /// It returns all the pairs present in the storage.
-  async fn get_pairs<'a>(&self, filter: models::PairFilter<'a>) -> Result<Vec<Pair>>;
+  async fn get_pairs<'a>(&self, filter: PairFilter<'a>) -> Result<Vec<Pair>>;
 
   /// It creates a new pair from the parameters and returns the new one with generated values.
-  async fn create_pair(&self, new_pair: models::NewPair) -> Result<Pair>;
+  async fn create_pair(&self, new_pair: NewPair) -> Result<Pair>;
 
   /// It takes a pair and return the price if found in the storage.
   async fn get_price(&self, pair: &Pair) -> Result<Price>;
 
   /// It takes a price and insert or update the price in the storage.
-  async fn set_price(&self, price: models::Price) -> Result<()>;
+  async fn set_price(&self, price: NewPrice) -> Result<()>;
 }
 
 pub type DynPriceRepository = Arc<dyn PriceRepository + Sync + Send>;

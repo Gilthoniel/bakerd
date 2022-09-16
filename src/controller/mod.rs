@@ -122,7 +122,7 @@ pub async fn create_pair(
     return Err(AppError::Forbidden);
   }
 
-  let new_pair = models::NewPair {
+  let new_pair = NewPair {
     base: request.base.clone(),
     quote: request.quote.clone(),
   };
@@ -144,7 +144,7 @@ pub async fn get_pairs(
   repository: Extension<DynPriceRepository>,
   _: Claims,
 ) -> Result<Json<Vec<Pair>>> {
-  let filter = models::PairFilter {
+  let filter = PairFilter {
     base: query.base.as_ref().map(String::as_str),
     quote: query.quote.as_ref().map(String::as_str),
   };
@@ -466,7 +466,7 @@ mod tests {
 
     repository
       .expect_create_pair()
-      .with(eq(models::NewPair {
+      .with(eq(NewPair {
         base: "CCD".into(),
         quote: "USD".into(),
       }))
@@ -625,9 +625,7 @@ mod tests {
         since_ms: Some(1200),
       }))
       .times(1)
-      .returning(|_| {
-        Ok(vec![Block::new(1, 100, ":hash-block-100:", 1500, 42)])
-      });
+      .returning(|_| Ok(vec![Block::new(1, 100, ":hash-block-100:", 1500, 42)]));
 
     let filter = BlockQuery {
       baker: Some(42),

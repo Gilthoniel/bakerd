@@ -105,16 +105,6 @@ impl PartialEq for Pair {
   }
 }
 
-impl From<models::Pair> for Pair {
-  fn from(p: models::Pair) -> Self {
-    Self {
-      id: p.id,
-      base: p.base,
-      quote: p.quote,
-    }
-  }
-}
-
 impl From<(i32, &str, &str)> for Pair {
   fn from(v: (i32, &str, &str)) -> Self {
     Self {
@@ -136,15 +126,15 @@ pub struct Price {
   low: f64,
 }
 
-impl From<models::Price> for Price {
-  fn from(record: models::Price) -> Self {
+impl Price {
+  pub fn new(pair_id: i32, bid: f64, ask: f64, daily_change_relative: f64, high: f64, low: f64) -> Self {
     Self {
-      pair_id: record.pair_id,
-      bid: record.bid,
-      ask: record.ask,
-      daily_change_relative: record.daily_change_relative,
-      high: record.high,
-      low: record.low,
+      pair_id,
+      bid,
+      ask,
+      daily_change_relative,
+      high,
+      low,
     }
   }
 }

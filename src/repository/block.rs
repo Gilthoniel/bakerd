@@ -6,7 +6,7 @@ use diesel::prelude::*;
 use diesel::result::Error;
 use std::sync::Arc;
 
-pub use models::{NewBlock, BlockFilter};
+pub use models::{BlockFilter, NewBlock};
 
 mod models {
   use crate::model;

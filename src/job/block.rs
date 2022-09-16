@@ -1,7 +1,7 @@
 use super::{AsyncJob, Status};
 use crate::client::node::BlockInfo;
 use crate::client::DynNodeClient;
-use crate::repository::{NewBlock, DynAccountRepository, DynBlockRepository, NewReward, RewardKind};
+use crate::repository::{DynAccountRepository, DynBlockRepository, NewBlock, NewReward, RewardKind};
 use log::{info, warn};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
@@ -213,9 +213,10 @@ mod tests {
 
     let mut block_repository = MockBlockRepository::new();
 
-    block_repository.expect_get_last_block().times(1).returning(|| {
-      Ok(Block::new(1, 100, ":hash-100:", 0, 42))
-    });
+    block_repository
+      .expect_get_last_block()
+      .times(1)
+      .returning(|| Ok(Block::new(1, 100, ":hash-100:", 0, 42)));
 
     block_repository.expect_store().times(1).returning(|_| Ok(()));
 

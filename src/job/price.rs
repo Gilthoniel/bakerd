@@ -1,6 +1,6 @@
 use super::{AsyncJob, Status};
 use crate::client::BoxedPriceClient;
-use crate::repository::{models, DynPriceRepository};
+use crate::repository::{DynPriceRepository, NewPrice, PairFilter};
 
 pub struct PriceRefresher {
   client: BoxedPriceClient,
@@ -19,12 +19,12 @@ impl PriceRefresher {
 #[async_trait]
 impl AsyncJob for PriceRefresher {
   async fn execute(&self) -> Status {
-    let pairs = self.repository.get_pairs(models::PairFilter::default()).await?;
+    let pairs = self.repository.get_pairs(PairFilter::default()).await?;
 
     let prices = self.client.get_prices(pairs).await?;
 
     for price in prices {
-      let new_price = models::Price {
+      let new_price = NewPrice {
         pair_id: price.pair.get_id(),
         bid: price.bid,
         ask: price.ask,
@@ -44,7 +44,7 @@ impl AsyncJob for PriceRefresher {
 mod tests {
   use super::*;
   use crate::client::bitfinex::{MockPriceClient, Price as ClientPrice};
-  use crate::repository::{models, MockPriceRepository};
+  use crate::repository::MockPriceRepository;
   use mockall::predicate::*;
   use std::sync::Arc;
 
@@ -71,13 +71,13 @@ mod tests {
 
     mock_repository
       .expect_get_pairs()
-      .withf(|filter| *filter == models::PairFilter::default())
+      .withf(|filter| *filter == PairFilter::default())
       .times(1)
       .returning(|_| Ok(vec![(1, "CCD", "USD").into()]));
 
     mock_repository
       .expect_set_price()
-      .with(eq(models::Price {
+      .with(eq(NewPrice {
         pair_id: 1,
         bid: 2.0,
         ask: 0.5,
