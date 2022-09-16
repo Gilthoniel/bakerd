@@ -4,7 +4,10 @@ use crate::schema::statuses::dsl::*;
 use diesel::prelude::*;
 use std::sync::Arc;
 
-pub mod models {
+pub use models::{NewStatus, NodeStatusJson, ResourceStatusJson};
+
+mod models {
+  use crate::model;
   use crate::schema::statuses;
   use diesel::backend;
   use diesel::deserialize as de;
@@ -73,6 +76,12 @@ pub mod models {
     pub resources: ResourceStatusJson,
     pub node: Option<NodeStatusJson>,
     pub timestamp_ms: i64,
+  }
+
+  impl From<Status> for model::Status {
+    fn from(s: Status) -> Self {
+      Self::new(s.id, s.resources, s.node, s.timestamp_ms)
+    }
   }
 
   #[derive(Insertable)]

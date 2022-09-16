@@ -1,4 +1,4 @@
-use crate::repository::models;
+use crate::repository::{models, NodeStatusJson, ResourceStatusJson};
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -181,18 +181,18 @@ impl Block {
 #[derive(Serialize, Debug)]
 pub struct Status {
   id: i32,
-  resources: models::ResourceStatusJson,
-  node: Option<models::NodeStatusJson>,
+  resources: ResourceStatusJson,
+  node: Option<NodeStatusJson>,
   timestamp_ms: i64,
 }
 
-impl From<models::Status> for Status {
-  fn from(record: models::Status) -> Self {
+impl Status {
+  pub fn new(id: i32, resources: ResourceStatusJson, node: Option<NodeStatusJson>, timestamp_ms: i64) -> Self {
     Self {
-      id: record.id,
-      resources: record.resources,
-      node: record.node,
-      timestamp_ms: record.timestamp_ms,
+      id,
+      resources,
+      node,
+      timestamp_ms,
     }
   }
 }
@@ -348,7 +348,7 @@ mod tests {
   fn test_status_attributes() {
     let status = Status {
       id: 1,
-      resources: models::ResourceStatusJson {
+      resources: ResourceStatusJson {
         avg_cpu_load: Some(0.5),
         mem_free: Some(50),
         mem_total: Some(100),

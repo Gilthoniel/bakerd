@@ -229,7 +229,7 @@ fn map_pair_error(e: RepositoryError) -> AppError {
 mod tests {
   use super::*;
   use crate::model::{Pair, RewardKind, Status as StatusView};
-  use crate::repository::{models, MockAccountRepository, MockPriceRepository, MockStatusRepository};
+  use crate::repository::{MockAccountRepository, MockPriceRepository, MockStatusRepository};
   use axum::http::StatusCode;
   use diesel::result::Error;
   use mockall::predicate::*;
@@ -258,17 +258,17 @@ mod tests {
     let mut repository = MockStatusRepository::new();
 
     repository.expect_get_last_report().times(1).returning(|| {
-      Ok(StatusView::from(models::Status {
-        id: 1,
-        resources: models::ResourceStatusJson {
+      Ok(StatusView::new(
+        1,
+        ResourceStatusJson {
           avg_cpu_load: Some(0.5),
           mem_free: Some(256),
           mem_total: Some(512),
           uptime_secs: Some(16),
         },
-        node: None,
-        timestamp_ms: 0,
-      }))
+        None,
+        0,
+      ))
     });
 
     let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;

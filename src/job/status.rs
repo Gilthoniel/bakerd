@@ -1,6 +1,6 @@
 use super::{AsyncJob, Status};
 use crate::client::{DynNodeClient, Error as ClientError};
-use crate::repository::{models, DynStatusRepository};
+use crate::repository::{DynStatusRepository, NewStatus, NodeStatusJson, ResourceStatusJson};
 use chrono::Utc;
 use log::error;
 use std::io;
@@ -29,7 +29,7 @@ impl StatusChecker {
 
   /// It gathers resource usage for the system and return the result. The call
   /// will sleep for some time to gather the CPU load.
-  async fn get_system_stats(&self) -> models::ResourceStatusJson {
+  async fn get_system_stats(&self) -> ResourceStatusJson {
     let system = System::new();
 
     let memory = match system.memory() {
@@ -40,7 +40,7 @@ impl StatusChecker {
       }
     };
 
-    models::ResourceStatusJson {
+    ResourceStatusJson {
       avg_cpu_load: match self.gather_cpu_load(&system).await {
         Ok(load) => Some(load),
         Err(e) => {
@@ -75,14 +75,14 @@ impl StatusChecker {
 
   /// It fetches the node for multiple statistics and build the JSON that will be
   /// store for the node status.
-  async fn get_node_status(&self) -> Result<models::NodeStatusJson, ClientError> {
+  async fn get_node_status(&self) -> Result<NodeStatusJson, ClientError> {
     let node_info = self.client.get_node_info().await?;
 
     let uptime = self.client.get_node_uptime().await?;
 
     let node_stats = self.client.get_node_stats().await?;
 
-    Ok(models::NodeStatusJson {
+    Ok(NodeStatusJson {
       node_id: node_info.node_id,
       baker_id: node_info.baker_id,
       is_baker_committee: node_info.is_baker_committee,
@@ -98,7 +98,7 @@ impl StatusChecker {
 #[async_trait]
 impl AsyncJob for StatusChecker {
   async fn execute(&self) -> Status {
-    let new_status = models::NewStatus {
+    let new_status = NewStatus {
       resources: self.get_system_stats().await,
       node: match self.get_node_status().await {
         Ok(n) => Some(n),
