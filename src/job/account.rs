@@ -131,7 +131,7 @@ mod tests {
           && !account.pending_update
       })
       .times(1)
-      .returning(|_| Ok(()));
+      .returning(|_| Ok(Account::new(1, ":address:", dec!(42), dec!(0), 0.0)));
 
     let job = RefreshAccountsJob::new(Arc::new(client), Arc::new(repository));
 

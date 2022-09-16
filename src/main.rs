@@ -167,9 +167,10 @@ async fn create_app(deps: &Dependencies) -> Result<Router> {
       .route("/auth/authorize", post(controller::auth::authorize))
       .route("/auth/token", post(controller::auth::refresh_token))
       .route("/users", post(controller::auth::create_user))
-      .route("/accounts", post(controller::create_account))
-      .route("/accounts/:addr", get(controller::get_account))
-      .route("/accounts/:addr/rewards", get(controller::get_account_rewards))
+      .route("/accounts", post(controller::set_account))
+      .route("/accounts", get(controller::get_accounts))
+      .route("/accounts/:account_id", get(controller::get_account))
+      .route("/accounts/:account_id/rewards", get(controller::get_account_rewards))
       .route("/pairs", post(controller::create_pair))
       .route("/pairs", get(controller::get_pairs))
       .route("/pairs/:pair_id/price", get(controller::get_price))
@@ -260,8 +261,6 @@ mod tests {
       "jobs:\n",
       "  accounts_refresher: \"* * * * * * 1970\"\n",
       "  price_refresher: \"* * * * * * 1970\"\n",
-      "pairs:\n",
-      "  - [\"BTC\", \"USD\"]\n"
     );
 
     let mut values = values.as_bytes();
@@ -300,7 +299,7 @@ mod tests {
     let response = app
       .oneshot(
         Request::builder()
-          .uri("/accounts/:address:")
+          .uri("/accounts/1")
           .header("Authorization", format!("Bearer {}", token))
           .body(Body::empty())
           .unwrap(),

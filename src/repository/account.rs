@@ -65,6 +65,13 @@ mod models {
     pub addresses: Option<Vec<&'a str>>,
   }
 
+  impl <'a> AccountFilter<'a> {
+    /// It adds the list of addresses to the filter. Previous values will be overwritten.
+    pub fn set_addresses(&mut self, addresses: &'a [impl AsRef<str>]) {
+      self.addresses = Some(addresses.iter().map(AsRef::as_ref).collect());
+    }
+  }
+
   impl From<Account> for model::Account {
     /// It creates an account from a record of the storage layer.
     fn from(record: Account) -> Self {
@@ -184,14 +191,14 @@ mod models {
 #[async_trait]
 pub trait AccountRepository {
   /// It returns the account associated to the address if it exists.
-  async fn get_account(&self, addr: &str) -> Result<Account>;
+  async fn get_account(&self, account: i32) -> Result<Account>;
 
   /// It returns the list of accounts associated with the addresses.
   async fn get_accounts<'a>(&self, filter: AccountFilter<'a>) -> Result<Vec<Account>>;
 
   /// It creates or updates an existing account using the address as the
   /// identifier.
-  async fn set_account(&self, account: NewAccount) -> Result<()>;
+  async fn set_account(&self, account: NewAccount) -> Result<Account>;
 
   /// It returns the list of rewards known for an account using the address to
   /// identity it.
@@ -228,12 +235,10 @@ impl SqliteAccountRepository {
 #[async_trait]
 impl AccountRepository for SqliteAccountRepository {
   /// It returns the account with the given address if it exists.
-  async fn get_account(&self, addr: &str) -> Result<Account> {
-    let addr = addr.to_string();
-
+  async fn get_account(&self, account: i32) -> Result<Account> {
     let record: models::Account = self
       .pool
-      .exec(|mut conn| accounts.filter(address.eq(addr)).first(&mut conn))
+      .exec(|mut conn| accounts.filter(id.eq(account)).first(&mut conn))
       .await?;
 
     Ok(Account::new(
@@ -263,20 +268,24 @@ impl AccountRepository for SqliteAccountRepository {
   }
 
   /// It creates or updates an existing account using the address as the identifier.
-  async fn set_account(&self, account: NewAccount) -> Result<()> {
-    self
+  async fn set_account(&self, account: NewAccount) -> Result<Account> {
+    let res: models::Account = self
       .pool
       .exec(move |mut conn| {
-        diesel::insert_into(accounts)
-          .values(&account)
-          .on_conflict(address)
-          .do_update()
-          .set(&account)
-          .execute(&mut conn)
+        conn.transaction(|tx| {
+          diesel::insert_into(accounts)
+            .values(&account)
+            .on_conflict(address)
+            .do_update()
+            .set(&account)
+            .execute(tx)?;
+
+          accounts.filter(address.eq(account.address)).first(tx)
+        })
       })
       .await?;
 
-    Ok(())
+    Ok(Account::from(res))
   }
 
   /// It returns the list of rewards known for an account using the address to identity it.
@@ -347,21 +356,12 @@ mod tests {
 
     pool.run_migrations().await.unwrap();
 
-    let expect = models::Account {
-      id: 1,
+    let account = NewAccount {
       address: ":address:".into(),
       balance: dec!(250.2).into(),
       stake: dec!(50).into(),
-      lottery_power: 0.096,
+      lottery_power: 0.0123,
       pending_update: false,
-    };
-
-    let account = NewAccount {
-      address: expect.address.clone(),
-      balance: dec!(250.2).into(),
-      stake: dec!(50).into(),
-      lottery_power: expect.lottery_power,
-      pending_update: expect.pending_update,
     };
 
     let repository = SqliteAccountRepository::new(pool);
@@ -370,9 +370,10 @@ mod tests {
     assert!(matches!(repository.set_account(account).await, Ok(_)),);
 
     // 2. Get the account.
-    let res = repository.get_account(":address:").await.unwrap();
+    let res = repository.get_account(1).await.unwrap();
 
-    assert_eq!(Account::from(expect), res);
+    assert_eq!(1, res.get_id());
+    assert_eq!(":address:", res.get_address());
   }
 
   #[tokio::test(flavor = "multi_thread")]
@@ -381,7 +382,7 @@ mod tests {
 
     let repository = SqliteAccountRepository::new(pool);
 
-    let res = repository.get_account(":address:").await;
+    let res = repository.get_account(1).await;
 
     assert!(matches!(res, Err(RepositoryError::Faillable(_))));
   }
@@ -454,7 +455,7 @@ mod tests {
       .await
       .unwrap();
 
-    let account = repository.get_account(":address:").await.unwrap();
+    let account = repository.get_account(1).await.unwrap();
 
     repository
       .set_reward(NewReward {

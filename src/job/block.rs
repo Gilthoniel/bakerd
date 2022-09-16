@@ -232,7 +232,7 @@ mod tests {
 
     account_repository
       .expect_get_accounts()
-      .withf(|filter| filter.addresses == Some(vec![":address-1:", ":address-2:"]))
+      .withf(|filter| matches!(&filter.addresses, Some(a) if a.len() == 2))
       .times(1)
       .returning(|_| {
         Ok(vec![

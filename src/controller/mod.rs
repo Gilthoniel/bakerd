@@ -61,7 +61,7 @@ pub struct CreateAccount {
 }
 
 /// A controller to create an account that will be followed by the daemon.
-pub async fn create_account(
+pub async fn set_account(
   request: Json<CreateAccount>,
   repository: Extension<DynAccountRepository>,
   claims: Claims,
@@ -72,34 +72,54 @@ pub async fn create_account(
 
   let new_account = NewAccount::new(&request.address, true);
 
-  repository.set_account(new_account).await.map_err(map_internal_error)?;
-
-  let res = repository
-    .get_account(&request.address)
-    .await
-    .map_err(map_internal_error)?;
+  let res = repository.set_account(new_account).await.map_err(map_internal_error)?;
 
   Ok(res.into())
 }
 
 /// A controller to return the account associated with the address.
 pub async fn get_account(
-  Path(addr): Path<String>,
+  Path(account_id): Path<i32>,
   Extension(repo): Extension<DynAccountRepository>,
   _: Claims,
 ) -> Result<Json<Account>> {
-  let account = repo.get_account(&addr).await.map_err(map_account_error)?;
+  let account = repo.get_account(account_id).await.map_err(map_account_error)?;
 
   Ok(account.into())
 }
 
+#[derive(Deserialize, Debug)]
+pub struct AccountQuery {
+  address: Option<String>,
+}
+
+/// A controller to return the list of accounts. The result can be narrow down using the filter.
+pub async fn get_accounts(
+  query: Query<AccountQuery>,
+  repository: Extension<DynAccountRepository>,
+  _: Claims,
+) -> Result<Json<Vec<Account>>> {
+  let mut filter = AccountFilter::default();
+  
+  if let Some(address) = query.address.as_ref() {
+    filter.set_addresses(&[address]);
+  }
+
+  let accounts = repository
+    .get_accounts(AccountFilter::default())
+    .await
+    .map_err(map_internal_error)?;
+
+  Ok(accounts.into())
+}
+
 /// A controller to return the rewards of an account.
 pub async fn get_account_rewards(
-  Path(addr): Path<String>,
+  Path(account_id): Path<i32>,
   Extension(repository): Extension<DynAccountRepository>,
   _: Claims,
 ) -> Result<Json<Vec<Reward>>> {
-  let account = repository.get_account(&addr).await.map_err(map_account_error)?;
+  let account = repository.get_account(account_id).await.map_err(map_account_error)?;
 
   let rewards = repository.get_rewards(&account).await.map_err(map_internal_error)?;
 
@@ -291,7 +311,7 @@ mod tests {
   }
 
   #[test]
-  fn test_create_account_request() {
+  fn test_set_account_request() {
     let value = "{\"address\":\"some-address\"}";
 
     let res: CreateAccount = serde_json::from_str(value).expect("it should be deserialized");
@@ -305,13 +325,11 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_create_account() {
+  async fn test_set_account() {
     let mut repository = MockAccountRepository::new();
 
-    repository.expect_set_account().times(1).returning(|_| Ok(()));
-
     repository
-      .expect_get_account()
+      .expect_set_account()
       .times(1)
       .returning(|_| Ok(Account::new(1, ":address:", dec!(42), dec!(1), 0.6)));
 
@@ -321,13 +339,13 @@ mod tests {
 
     let claims = Claims::builder().roles(vec![Role::Admin]).build();
 
-    let res = create_account(request, Extension(Arc::new(repository)), claims).await;
+    let res = set_account(request, Extension(Arc::new(repository)), claims).await;
 
     assert!(matches!(res, Ok(_)));
   }
 
   #[tokio::test]
-  async fn test_create_account_forbidden() {
+  async fn test_set_account_forbidden() {
     let repository = MockAccountRepository::new();
 
     let request = Json(CreateAccount {
@@ -336,7 +354,7 @@ mod tests {
 
     let claims = Claims::default();
 
-    let res = create_account(request, Extension(Arc::new(repository)), claims).await;
+    let res = set_account(request, Extension(Arc::new(repository)), claims).await;
 
     assert!(matches!(res, Err(AppError::Forbidden)));
   }
@@ -351,17 +369,13 @@ mod tests {
 
     repository
       .expect_get_account()
-      .with(eq(":address:"))
+      .with(eq(1))
       .times(1)
       .return_once(move |_| Ok(account));
 
-    let res = get_account(
-      Path(":address:".into()),
-      Extension(Arc::new(repository)),
-      Claims::default(),
-    )
-    .await
-    .unwrap();
+    let res = get_account(Path(1), Extension(Arc::new(repository)), Claims::default())
+      .await
+      .unwrap();
 
     assert_eq!(expect, res.0)
   }
@@ -370,20 +384,13 @@ mod tests {
   async fn test_get_account_not_found() {
     let mut repository = MockAccountRepository::new();
 
-    let addr = "some-address";
-
     repository
       .expect_get_account()
-      .with(eq(addr))
+      .with(eq(1))
       .times(1)
       .returning(|_| Err(RepositoryError::NotFound));
 
-    let res = get_account(
-      Path(addr.to_string()),
-      Extension(Arc::new(repository)),
-      Claims::default(),
-    )
-    .await;
+    let res = get_account(Path(1), Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::AccountNotFound)));
   }
@@ -392,20 +399,13 @@ mod tests {
   async fn test_get_account_internal_error() {
     let mut repository = MockAccountRepository::new();
 
-    let addr = "some-address";
-
     repository
       .expect_get_account()
-      .with(eq(addr))
+      .with(eq(1))
       .times(1)
       .returning(|_| Err(RepositoryError::Faillable(Box::new(Error::AlreadyInTransaction))));
 
-    let res = get_account(
-      Path(addr.to_string()),
-      Extension(Arc::new(repository)),
-      Claims::default(),
-    )
-    .await;
+    let res = get_account(Path(1), Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::Internal)));
   }
@@ -416,7 +416,7 @@ mod tests {
 
     repository
       .expect_get_account()
-      .with(eq(":address:"))
+      .with(eq(1))
       .times(1)
       .returning(|_| Ok(Account::new(1, ":address:", dec!(125), dec!(50), 0.06)));
 
@@ -435,11 +435,7 @@ mod tests {
         )])
       });
 
-    let res = get_account_rewards(
-      Path(":address:".to_string()),
-      Extension(Arc::new(repository)),
-      Claims::default(),
-    );
+    let res = get_account_rewards(Path(1), Extension(Arc::new(repository)), Claims::default());
 
     assert!(matches!(res.await, Ok(rewards) if rewards.len() == 1));
   }
