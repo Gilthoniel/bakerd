@@ -88,7 +88,7 @@ pub async fn get_account(
   Ok(account.into())
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Default, Debug)]
 pub struct AccountQuery {
   address: Option<String>,
 }
@@ -99,14 +99,12 @@ pub async fn get_accounts(
   repository: Extension<DynAccountRepository>,
   _: Claims,
 ) -> Result<Json<Vec<Account>>> {
-  let mut filter = AccountFilter::default();
-  
-  if let Some(address) = query.address.as_ref() {
-    filter.set_addresses(&[address]);
-  }
+  let filter = AccountFilter {
+    addresses: query.address.as_ref().map(|a| vec![a.as_str()]),
+  };
 
   let accounts = repository
-    .get_accounts(AccountFilter::default())
+    .get_accounts(filter)
     .await
     .map_err(map_internal_error)?;
 
@@ -308,6 +306,44 @@ mod tests {
     let res = get_status(Extension(Arc::new(repository)), Claims::default()).await;
 
     assert!(matches!(res, Err(AppError::Internal)));
+  }
+
+  #[tokio::test]
+  async fn test_get_accounts() {
+    let mut repository = MockAccountRepository::new();
+
+    repository
+      .expect_get_accounts()
+      .withf(|f| *f == AccountFilter::default())
+      .times(1)
+      .returning(|_| Ok(vec![]));
+
+    let query = AccountQuery::default();
+
+    let res = get_accounts(Query(query), Extension(Arc::new(repository)), Claims::default()).await;
+
+    assert!(matches!(res, Ok(_)));
+  }
+
+  #[tokio::test]
+  async fn test_get_accounts_with_address() {
+    let mut repository = MockAccountRepository::new();
+
+    repository
+      .expect_get_accounts()
+      .withf(|f| *f == AccountFilter {
+        addresses: Some(vec![":address:"])
+      })
+      .times(1)
+      .returning(|_| Ok(vec![]));
+
+    let query = AccountQuery {
+      address: Some(String::from(":address:")),
+    };
+
+    let res = get_accounts(Query(query), Extension(Arc::new(repository)), Claims::default()).await;
+
+    assert!(matches!(res, Ok(_)));
   }
 
   #[test]

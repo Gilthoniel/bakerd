@@ -60,16 +60,9 @@ mod models {
     pub pending_update: bool,
   }
 
-  #[derive(Default)]
+  #[derive(Default, PartialEq)]
   pub struct AccountFilter<'a> {
     pub addresses: Option<Vec<&'a str>>,
-  }
-
-  impl <'a> AccountFilter<'a> {
-    /// It adds the list of addresses to the filter. Previous values will be overwritten.
-    pub fn set_addresses(&mut self, addresses: &'a [impl AsRef<str>]) {
-      self.addresses = Some(addresses.iter().map(AsRef::as_ref).collect());
-    }
   }
 
   impl From<Account> for model::Account {
