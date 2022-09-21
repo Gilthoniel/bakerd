@@ -38,7 +38,7 @@ impl Account {
 
 /// A enumeration of the reward kinds. It supports serialization into a human
 /// readable string.
-#[derive(Serialize, Debug)]
+#[derive(Serialize, PartialEq, Debug)]
 pub enum RewardKind {
   #[serde(rename = "kind_baker")]
   Baker,
@@ -69,6 +69,18 @@ impl Reward {
       epoch_ms,
       kind,
     }
+  }
+
+  pub fn get_block_hash(&self) -> &str {
+    &self.block_hash
+  }
+
+  pub fn get_epoch_ms(&self) -> i64 {
+    self.epoch_ms
+  }
+
+  pub fn get_kind(&self) -> &RewardKind {
+    &self.kind
   }
 }
 

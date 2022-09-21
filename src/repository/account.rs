@@ -304,7 +304,8 @@ impl AccountRepository for SqliteAccountRepository {
         diesel::insert_into(reward_dsl::account_rewards)
           .values(&reward)
           .on_conflict((reward_dsl::account_id, reward_dsl::block_hash, reward_dsl::kind))
-          .do_nothing()
+          .do_update()
+          .set(reward_dsl::amount.eq(&reward.amount))
           .execute(&mut conn)
       })
       .await?;

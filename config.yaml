@@ -7,3 +7,4 @@ jobs:
   price_refresher: "*/30 * * * * *"
   block_fetcher: "*/10 * * * * *"
   status_checker: "*/30 * * * * *"
+  reward_repairer: "* 34 20 21 * * 2022"

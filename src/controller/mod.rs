@@ -103,10 +103,7 @@ pub async fn get_accounts(
     addresses: query.address.as_ref().map(|a| vec![a.as_str()]),
   };
 
-  let accounts = repository
-    .get_accounts(filter)
-    .await
-    .map_err(map_internal_error)?;
+  let accounts = repository.get_accounts(filter).await.map_err(map_internal_error)?;
 
   Ok(accounts.into())
 }
@@ -331,8 +328,10 @@ mod tests {
 
     repository
       .expect_get_accounts()
-      .withf(|f| *f == AccountFilter {
-        addresses: Some(vec![":address:"])
+      .withf(|f| {
+        *f == AccountFilter {
+          addresses: Some(vec![":address:"]),
+        }
       })
       .times(1)
       .returning(|_| Ok(vec![]));
