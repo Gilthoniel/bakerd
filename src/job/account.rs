@@ -1,7 +1,7 @@
 use super::{AsyncJob, Status};
 use crate::client::node::Block;
 use crate::client::DynNodeClient;
-use crate::model::{Account, RewardKind as Kind};
+use crate::model::Account;
 use crate::repository::*;
 use rust_decimal::Decimal;
 
@@ -61,72 +61,6 @@ impl AsyncJob for RefreshAccountsJob {
 
     for account in accounts {
       self.do_account(&last_block, &account).await?;
-    }
-
-    Ok(())
-  }
-}
-
-pub struct RewardRepairer {
-  client: DynNodeClient,
-  repository: DynAccountRepository,
-}
-
-impl RewardRepairer {
-  pub fn new(client: DynNodeClient, repository: DynAccountRepository) -> Self {
-    Self {
-      client,
-      repository,
-    }
-  }
-}
-
-#[async_trait]
-impl AsyncJob for RewardRepairer {
-  async fn execute(&self) -> Status {
-    let accounts = self.repository.get_accounts(AccountFilter::default()).await?;
-
-    for account in accounts {
-      let rewards = self.repository.get_rewards(&account).await?;
-
-      for reward in rewards {
-        if *reward.get_kind() == Kind::TransactionFee {
-          // Do only one time per block.
-          continue;
-        }
-
-        let summary = self.client.get_block_summary(reward.get_block_hash()).await?;
-
-        for event in summary.special_events {
-          if event.tag != "PaydayAccountReward" {
-            continue;
-          }
-
-          if let Some(addr) = &event.account {
-            if addr == account.get_address() {
-              let baker_reward = NewReward {
-                account_id: account.get_id(),
-                block_hash: reward.get_block_hash().to_string(),
-                amount: event.baker_reward.unwrap_or(Decimal::ZERO).into(),
-                epoch_ms: reward.get_epoch_ms(),
-                kind: RewardKind::Baker,
-              };
-
-              self.repository.set_reward(baker_reward).await?;
-
-              let tx_fee = NewReward {
-                account_id: account.get_id(),
-                block_hash: reward.get_block_hash().to_string(),
-                amount: event.transaction_fees.unwrap_or(Decimal::ZERO).into(),
-                epoch_ms: reward.get_epoch_ms(),
-                kind: RewardKind::TransactionFee,
-              };
-
-              self.repository.set_reward(tx_fee).await?;
-            }
-          }
-        }
-      }
     }
 
     Ok(())

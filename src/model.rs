@@ -294,6 +294,22 @@ mod tests {
   }
 
   #[test]
+  fn test_reward() {
+    let reward = Reward {
+      id: 1,
+      account_id: 2,
+      amount: Decimal::from(123),
+      block_hash: ":hash:".into(),
+      epoch_ms: 1000,
+      kind: RewardKind::Baker,
+    };
+
+    assert_eq!(reward.get_block_hash(), ":hash:");
+    assert_eq!(1000, reward.get_epoch_ms());
+    assert_eq!(*reward.get_kind(), RewardKind::Baker);
+  }
+
+  #[test]
   fn test_reward_attributes() {
     let reward = Reward {
       id: 1,
@@ -310,6 +326,22 @@ mod tests {
 
     // Debug
     format!("{:?}", reward);
+  }
+
+  #[test]
+  fn test_pair_attributes() {
+    let pair = Pair {
+      id: 1,
+      base: "CCD".to_string(),
+      quote: "USD".to_string(),
+    };
+
+    // Serialize
+    let res = serde_json::to_string(&pair);
+    assert!(matches!(res, Ok(_)));
+
+    // Debug
+    format!("{:?}", pair);
   }
 
   #[test]

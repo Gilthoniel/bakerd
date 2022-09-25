@@ -1,6 +1,7 @@
 use super::{AsyncJob, Status};
 use crate::client::node::BlockInfo;
 use crate::client::DynNodeClient;
+use crate::model::RewardKind as Kind;
 use crate::repository::*;
 use log::{info, warn};
 use rust_decimal::Decimal;
@@ -88,27 +89,14 @@ impl BlockFetcher {
       if let Some((baker, fees)) = rewards.get(account.get_address()) {
         info!("rewards found for account `{}`", account.get_address());
 
-        // 1. Insert the baker reward.
-        let baker_reward = NewReward {
-          account_id: account.get_id(),
-          block_hash: block_info.block_hash.clone(),
-          amount: (*baker).into(),
-          epoch_ms: block_info.block_slot_time.timestamp_millis(),
-          kind: RewardKind::Baker,
-        };
-
-        self.account_repository.set_reward(baker_reward).await?;
-
-        // 2. Insert the transaction fee reward.
-        let tx_fee = NewReward {
-          account_id: account.get_id(),
-          block_hash: block_info.block_hash.clone(),
-          amount: (*fees).into(),
-          epoch_ms: block_info.block_slot_time.timestamp_millis(),
-          kind: RewardKind::TransactionFee,
-        };
-
-        self.account_repository.set_reward(tx_fee).await?;
+        insert_rewards(
+          &self.account_repository,
+          account.get_id(),
+          &block_info.block_hash,
+          block_info.block_slot_time.timestamp_millis(),
+          (*baker, *fees),
+        )
+        .await?;
       }
     }
 
@@ -151,11 +139,102 @@ impl AsyncJob for BlockFetcher {
   }
 }
 
+pub struct RewardRepairer {
+  client: DynNodeClient,
+  repository: DynAccountRepository,
+}
+
+impl RewardRepairer {
+  pub fn new(client: DynNodeClient, repository: DynAccountRepository) -> Self {
+    Self {
+      client,
+      repository,
+    }
+  }
+}
+
+#[async_trait]
+impl AsyncJob for RewardRepairer {
+  async fn execute(&self) -> Status {
+    let accounts = self.repository.get_accounts(AccountFilter::default()).await?;
+
+    for account in accounts {
+      let rewards = self.repository.get_rewards(&account).await?;
+
+      for reward in rewards {
+        if *reward.get_kind() == Kind::TransactionFee {
+          // Do only one time per block.
+          continue;
+        }
+
+        let summary = self.client.get_block_summary(reward.get_block_hash()).await?;
+
+        for event in summary.special_events {
+          if event.tag != EVENT_TAG_REWARD {
+            continue;
+          }
+
+          if let Some(addr) = &event.account {
+            if addr == account.get_address() {
+              let values = (
+                event.baker_reward.unwrap_or(Decimal::ZERO),
+                event.transaction_fees.unwrap_or(Decimal::ZERO),
+              );
+
+              insert_rewards(
+                &self.repository,
+                account.get_id(),
+                reward.get_block_hash(),
+                reward.get_epoch_ms(),
+                values,
+              )
+              .await?;
+            }
+          }
+        }
+      }
+    }
+
+    Ok(())
+  }
+}
+
+/// It inserts the baker reward and the transaction fees for the account and the block info.
+async fn insert_rewards(
+  repository: &DynAccountRepository,
+  account_id: i32,
+  hash: &str,
+  epoch_ms: i64,
+  (baker, fees): (Decimal, Decimal),
+) -> Status {
+  let baker_reward = NewReward {
+    account_id,
+    block_hash: hash.to_string(),
+    amount: baker.into(),
+    epoch_ms,
+    kind: RewardKind::Baker,
+  };
+
+  repository.set_reward(baker_reward).await?;
+
+  let tx_fee = NewReward {
+    account_id,
+    block_hash: hash.to_string(),
+    amount: fees.into(),
+    epoch_ms,
+    kind: RewardKind::TransactionFee,
+  };
+
+  repository.set_reward(tx_fee).await?;
+
+  Ok(())
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::client::node::{BlockInfo, BlockSummary, Event, MockNodeClient};
-  use crate::model::{Account, Block};
+  use crate::model::{Account, Block, Reward};
   use crate::repository::{MockAccountRepository, MockBlockRepository};
   use chrono::Utc;
   use mockall::predicate::*;
@@ -164,7 +243,7 @@ mod tests {
   use std::sync::Arc;
 
   #[tokio::test]
-  async fn test_execute() {
+  async fn test_block_fetcher_execute() {
     let mut client = MockNodeClient::new();
 
     client.expect_get_last_block().times(1).returning(|| {
@@ -254,6 +333,63 @@ mod tests {
       Arc::new(block_repository),
       Arc::new(account_repository),
     );
+
+    let res = job.execute().await;
+
+    assert!(matches!(res, Ok(_)));
+  }
+
+  #[tokio::test]
+  async fn test_reward_repairer_execute() {
+    let mut client = MockNodeClient::new();
+
+    client
+      .expect_get_block_summary()
+      .with(eq(":block:"))
+      .times(1)
+      .returning(|_| Ok(BlockSummary{
+        special_events: vec![
+          Event {
+            tag: EVENT_TAG_REWARD.to_string(),
+            account: Some(":address:".to_string()),
+            baker_reward: Some(Decimal::from(2)),
+            transaction_fees: Some(Decimal::from(3)),
+            finalization_reward: None,
+          },
+          Event {
+            tag: "another event".to_string(),
+            account: Some(":address:".to_string()),
+            baker_reward: None,
+            transaction_fees: None,
+            finalization_reward: None,
+          },
+        ],
+      }));
+
+    let mut repository = MockAccountRepository::new();
+
+    repository
+      .expect_get_accounts()
+      .withf(|f| *f == AccountFilter::default())
+      .times(1)
+      .returning(|_| Ok(vec![Account::new(1, ":address:", dec!(0), dec!(0), 0.0)]));
+
+    repository
+      .expect_get_rewards()
+      .withf(|a| a.get_id() == 1)
+      .times(1)
+      .returning(|_| Ok(vec![Reward::new(1, 1, ":block:", dec!(0), 0, Kind::Baker)]));
+
+    repository
+      .expect_set_reward()
+      .withf(|r| match r.kind {
+        RewardKind::Baker => r.amount.0 == dec!(2),
+        RewardKind::TransactionFee => r.amount.0 == dec!(3),
+      })
+      .times(2)
+      .returning(|_| Ok(()));
+
+    let job = RewardRepairer::new(Arc::new(client), Arc::new(repository));
 
     let res = job.execute().await;
 

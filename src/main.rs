@@ -147,10 +147,10 @@ async fn prepare_jobs(deps: &Dependencies) -> Jobber {
           deps.status.clone(),
           node_client.clone(),
         )),
-        config::Job::RewardRepairer => Box::new(job::account::RewardRepairer::new(
+        config::Job::RewardRepairer => Box::new(job::block::RewardRepairer::new(
           node_client.clone(),
           deps.account.clone(),
-        ))
+        )),
       },
     );
   }
